@@ -3,6 +3,8 @@ import type { Role } from '$lib/types';
 import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
 import ClipboardListIcon from '@lucide/svelte/icons/clipboard-list';
 import PlusCircleIcon from '@lucide/svelte/icons/plus-circle';
+import UsersIcon from '@lucide/svelte/icons/users';
+import GraduationCapIcon from '@lucide/svelte/icons/graduation-cap';
 
 export interface ShellNavItem {
 	label: string;
@@ -21,7 +23,14 @@ export function shellNav(role: Role): ShellNavItem[] {
 		case 'warden':
 			return [
 				{ label: 'Dashboard', href: '/warden', icon: LayoutDashboardIcon },
-				{ label: 'Grievances', href: '/warden/grievances', icon: ClipboardListIcon }
+				{ label: 'Grievances', href: '/warden/grievances', icon: ClipboardListIcon },
+				{ label: 'Manage Students', href: '/warden/students', icon: GraduationCapIcon }
+			];
+		case 'admin':
+			return [
+				{ label: 'Dashboard', href: '/admin', icon: LayoutDashboardIcon },
+				{ label: 'All Grievances', href: '/admin/grievances', icon: ClipboardListIcon },
+				{ label: 'User Management', href: '/admin/users', icon: UsersIcon }
 			];
 		default: {
 			const _exhaustive: never = role;

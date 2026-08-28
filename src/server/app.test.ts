@@ -823,4 +823,227 @@ describe('HostelGrievance Security Tests', () => {
 			expect(logout.status).toBe(200);
 		});
 	});
+
+	// ══════════════════════════════════════════════════════════════════════════
+	// SECTION 7: Hierarchical RBAC & User Management
+	// ══════════════════════════════════════════════════════════════════════════
+
+	describe('Hierarchical RBAC & User Management', () => {
+		it('admin login succeeds and returns admin role', async () => {
+			const admin = await login(app, 'admin@example.test', 'admin123');
+			expect(admin.res.status).toBe(200);
+			expect(admin.json.user.role).toBe('admin');
+			expect(admin.json.user.email).toBe('admin@example.test');
+		});
+
+		it('admin can list all users and view system stats', async () => {
+			const { cookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const res = await app.request('/api/users', { headers: { Cookie: cookie } });
+			expect(res.status).toBe(200);
+			const json = await res.json();
+			expect(json.data.length).toBeGreaterThanOrEqual(4);
+
+			const statsRes = await app.request('/api/users/stats', { headers: { Cookie: cookie } });
+			expect(statsRes.status).toBe(200);
+			const statsJson = await statsRes.json();
+			expect(statsJson.data.total).toBeGreaterThanOrEqual(4);
+			expect(statsJson.data.admin).toBeGreaterThanOrEqual(1);
+			expect(statsJson.data.warden).toBeGreaterThanOrEqual(1);
+			expect(statsJson.data.student).toBeGreaterThanOrEqual(1);
+		});
+
+		it('admin can create student, warden, and admin accounts', async () => {
+			const { cookie } = await login(app, 'admin@example.test', 'admin123');
+
+			// Create student
+			const stuRes = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({
+					name: 'New Student Test',
+					email: 'newstu@example.test',
+					password: 'password123',
+					role: 'student',
+					room: 'D-101'
+				})
+			});
+			expect(stuRes.status).toBe(201);
+			const stuJson = await stuRes.json();
+			expect(stuJson.data.role).toBe('student');
+
+			// Create warden
+			const warRes = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({
+					name: 'New Warden Test',
+					email: 'newwar@example.test',
+					password: 'password123',
+					role: 'warden'
+				})
+			});
+			expect(warRes.status).toBe(201);
+			const warJson = await warRes.json();
+			expect(warJson.data.role).toBe('warden');
+
+			// Create admin
+			const admRes = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({
+					name: 'New Admin Test',
+					email: 'newadm@example.test',
+					password: 'password123',
+					role: 'admin'
+				})
+			});
+			expect(admRes.status).toBe(201);
+			const admJson = await admRes.json();
+			expect(admJson.data.role).toBe('admin');
+		});
+
+		it('admin can update users and delete a grievance', async () => {
+			const { cookie } = await login(app, 'admin@example.test', 'admin123');
+
+			// Update student room and name
+			const updateRes = await app.request('/api/users/stu-1', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({ name: 'Aarav Mehta Updated', room: 'Z-999' })
+			});
+			expect(updateRes.status).toBe(200);
+			const updateJson = await updateRes.json();
+			expect(updateJson.data.name).toBe('Aarav Mehta Updated');
+			expect(updateJson.data.room).toBe('Z-999');
+
+			// Admin delete grievance
+			const delGrv = await app.request('/api/grievances/GRV-0001', {
+				method: 'DELETE',
+				headers: { Cookie: cookie }
+			});
+			expect(delGrv.status).toBe(200);
+		});
+
+		it('admin cannot delete own logged-in account', async () => {
+			const { cookie, json } = await login(app, 'admin@example.test', 'admin123');
+			const selfId = json.user.id;
+
+			const delRes = await app.request(`/api/users/${selfId}`, {
+				method: 'DELETE',
+				headers: { Cookie: cookie }
+			});
+			expect(delRes.status).toBe(400);
+		});
+
+		it('warden can manage students but cannot see or modify wardens/admins', async () => {
+			const { cookie } = await login(app, 'warden@example.test', 'warden123');
+
+			// Warden listing users only returns students
+			const listRes = await app.request('/api/users', { headers: { Cookie: cookie } });
+			expect(listRes.status).toBe(200);
+			const listJson = await listRes.json();
+			expect(listJson.data.every((u: { role: string }) => u.role === 'student')).toBe(true);
+
+			// Warden can create a student
+			const createStu = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({
+					name: 'Warden Added Student',
+					email: 'wstudent@example.test',
+					password: 'password123',
+					role: 'student',
+					room: 'E-201'
+				})
+			});
+			expect(createStu.status).toBe(201);
+			const createdStuJson = await createStu.json();
+
+			// Warden cannot create a warden or admin
+			const createWar = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({
+					name: 'Illegal Warden',
+					email: 'illegalw@example.test',
+					password: 'password123',
+					role: 'warden'
+				})
+			});
+			expect(createWar.status).toBe(403);
+
+			// Warden cannot modify warden or admin accounts
+			const editWar = await app.request('/api/users/war-1', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({ name: 'Hacked Warden' })
+			});
+			expect(editWar.status).toBe(403);
+
+			const editAdm = await app.request('/api/users/adm-1', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({ name: 'Hacked Admin' })
+			});
+			expect(editAdm.status).toBe(403);
+
+			// Warden cannot delete admin or warden accounts
+			const delAdm = await app.request('/api/users/adm-1', {
+				method: 'DELETE',
+				headers: { Cookie: cookie }
+			});
+			expect(delAdm.status).toBe(403);
+
+			// Warden can delete the student they created
+			const delStu = await app.request(`/api/users/${createdStuJson.data.id}`, {
+				method: 'DELETE',
+				headers: { Cookie: cookie }
+			});
+			expect(delStu.status).toBe(200);
+		});
+
+		it('students cannot access any user management endpoints', async () => {
+			const { cookie } = await login(app, 'student@example.test', 'student123');
+
+			// List
+			const list = await app.request('/api/users', { headers: { Cookie: cookie } });
+			expect(list.status).toBe(403);
+
+			// Create
+			const create = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({
+					name: 'Student Escalation',
+					email: 'esc@example.test',
+					password: 'password123',
+					role: 'admin'
+				})
+			});
+			expect(create.status).toBe(403);
+
+			// Edit
+			const edit = await app.request('/api/users/war-1', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: cookie },
+				body: JSON.stringify({ name: 'Hacked' })
+			});
+			expect(edit.status).toBe(403);
+
+			// Delete
+			const del = await app.request('/api/users/stu-2', {
+				method: 'DELETE',
+				headers: { Cookie: cookie }
+			});
+			expect(del.status).toBe(403);
+
+			// Delete grievance
+			const delGrv = await app.request('/api/grievances/GRV-0001', {
+				method: 'DELETE',
+				headers: { Cookie: cookie }
+			});
+			expect(delGrv.status).toBe(403);
+		});
+	});
 });

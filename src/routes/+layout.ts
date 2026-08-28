@@ -14,7 +14,8 @@ export const load: LayoutLoad = ({ url }) => {
 
 	if (url.pathname === '/login') {
 		if (user) {
-			redirect(307, user.role === 'student' ? '/student' : '/warden');
+			const target = user.role === 'admin' ? '/admin' : user.role === 'warden' ? '/warden' : '/student';
+			redirect(307, target);
 		}
 		return {};
 	}
@@ -23,7 +24,7 @@ export const load: LayoutLoad = ({ url }) => {
 		redirect(307, '/login');
 	}
 
-	const prefix = user.role === 'student' ? '/student' : '/warden';
+	const prefix = user.role === 'admin' ? '/admin' : user.role === 'warden' ? '/warden' : '/student';
 	if (!url.pathname.startsWith(prefix)) {
 		// Wrong role area — send them to their own dashboard instead of a 404.
 		redirect(307, prefix);

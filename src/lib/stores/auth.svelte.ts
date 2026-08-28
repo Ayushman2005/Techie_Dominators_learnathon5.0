@@ -22,6 +22,10 @@ export function isWarden(): boolean {
 	return current?.role === 'warden';
 }
 
+export function isAdmin(): boolean {
+	return current?.role === 'admin';
+}
+
 export async function signIn(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
 	const result = await authService.signIn(email, password);
 	if (result.ok) {

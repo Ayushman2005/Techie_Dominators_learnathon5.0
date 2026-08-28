@@ -5,6 +5,7 @@ import { handleError, HttpError } from './http/errors.ts';
 import { authRoutes } from './routes/auth.ts';
 import { grievanceRoutes } from './routes/grievances.ts';
 import { attachmentRoutes } from './routes/attachments.ts';
+import { userRoutes } from './routes/users.ts';
 import { cors } from 'hono/cors';
 
 export type CreateAppOptions = {
@@ -104,6 +105,7 @@ export function createApp(options: CreateAppOptions) {
 	app.route('/api', authRoutes);
 	app.route('/api/grievances', grievanceRoutes);
 	app.route('/api/attachments', attachmentRoutes);
+	app.route('/api/users', userRoutes);
 
 	app.all('/api/*', () => {
 		throw new HttpError(404, 'not_found', 'Not found.');

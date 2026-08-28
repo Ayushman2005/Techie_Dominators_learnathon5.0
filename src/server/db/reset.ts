@@ -5,16 +5,31 @@ import { openDatabase } from './connection.ts';
 import { seedDatabase } from './seed.ts';
 import { resetUploadsDir } from '../storage/attachments.ts';
 
+import { applySchema } from './schema.ts';
+
 function removeIfExists(path: string): void {
-	if (existsSync(path)) unlinkSync(path);
+	if (existsSync(path)) {
+		try {
+			unlinkSync(path);
+		} catch {
+			// Ignored if file is locked by a running process on Windows
+		}
+	}
 }
 
 export function resetDatabase(dbPath = DEFAULT_DB_PATH, uploadsDir = DEFAULT_UPLOADS_DIR): void {
-	removeIfExists(dbPath);
 	removeIfExists(`${dbPath}-wal`);
 	removeIfExists(`${dbPath}-shm`);
+	removeIfExists(dbPath);
 	resetUploadsDir(uploadsDir);
 	const db = openDatabase(dbPath);
+	db.exec('PRAGMA foreign_keys = OFF;');
+	db.exec('DROP TABLE IF EXISTS attachments;');
+	db.exec('DROP TABLE IF EXISTS comments;');
+	db.exec('DROP TABLE IF EXISTS grievances;');
+	db.exec('DROP TABLE IF EXISTS sessions;');
+	db.exec('DROP TABLE IF EXISTS users;');
+	applySchema(db);
 	seedDatabase(db, uploadsDir);
 	db.close();
 }

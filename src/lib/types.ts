@@ -3,7 +3,7 @@
  * These mirror the shape the future Hono API will return.
  */
 
-export type Role = 'student' | 'warden';
+export type Role = 'student' | 'warden' | 'admin';
 
 export type GrievanceStatus = 'Open' | 'In Progress' | 'Resolved';
 
@@ -27,6 +27,23 @@ export interface User {
 	email: string;
 	role: Role;
 	/** For students: hostel room identifier shown to wardens. */
+	room?: string;
+	createdAt?: string;
+}
+
+export interface CreateUserInput {
+	name: string;
+	email: string;
+	password: string;
+	role: Role;
+	room?: string;
+}
+
+export interface UpdateUserInput {
+	name?: string;
+	email?: string;
+	password?: string;
+	role?: Role;
 	room?: string;
 }
 

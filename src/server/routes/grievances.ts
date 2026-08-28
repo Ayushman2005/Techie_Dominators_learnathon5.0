@@ -4,6 +4,7 @@ import { requireUser } from '../auth/session.ts';
 import {
 	assembleGrievance,
 	assertCanViewGrievance,
+	deleteGrievance,
 	findUserById,
 	listAllGrievanceRows,
 	listCommentRows,
@@ -48,7 +49,7 @@ export const grievanceRoutes = new Hono<AppEnv>();
  *
  * Returns grievances scoped to the authenticated user's role:
  * - Student: only their own grievances (enforced at DB query level)
- * - Warden: all grievances
+ * - Warden / Admin: all grievances
  *
  * The server determines the scope from the validated session — never from
  * a client-supplied parameter.
@@ -57,7 +58,9 @@ grievanceRoutes.get('/', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const rows =
-		user.role === 'warden' ? listAllGrievanceRows(db) : listGrievanceRowsForStudent(db, user.id);
+		user.role === 'warden' || user.role === 'admin'
+			? listAllGrievanceRows(db)
+			: listGrievanceRowsForStudent(db, user.id);
 	return c.json({
 		data: rows.map((row) => assembleGrievance(db, row))
 	});
@@ -177,7 +180,7 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 grievanceRoutes.get('/:id/comments', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
-	const row = requireGrievance(db, c.req.param('id'));
+	const row = requireGrievance(db, c.req.param('id')!);
 	// Authorization: students can only view comments on their own grievances
 	assertCanViewGrievance(user, row);
 	const comments = listCommentRows(db, row.id).map((comment) => {
@@ -201,7 +204,7 @@ grievanceRoutes.get('/:id/comments', (c) => {
 grievanceRoutes.post('/:id/comments', commentRateLimit, async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
-	const row = requireGrievance(db, c.req.param('id'));
+	const row = requireGrievance(db, c.req.param('id')!);
 
 	// Authorization: students can only comment on their own grievances
 	assertCanViewGrievance(user, row);
@@ -254,7 +257,7 @@ grievanceRoutes.post('/:id/comments', commentRateLimit, async (c) => {
 grievanceRoutes.post('/:id/attachments', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
-	const row = requireGrievance(db, c.req.param('id'));
+	const row = requireGrievance(db, c.req.param('id')!);
 	if (user.role !== 'student' || row.student_id !== user.id) {
 		securityLog('authorization_failure', {
 			userId: user.id,
@@ -310,7 +313,7 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 grievanceRoutes.get('/:id', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
-	const row = requireGrievance(db, c.req.param('id'));
+	const row = requireGrievance(db, c.req.param('id')!);
 	// CRITICAL: must call this — it throws 403 for students accessing others' grievances
 	assertCanViewGrievance(user, row);
 	return c.json({ data: assembleGrievance(db, row) });
@@ -327,7 +330,7 @@ grievanceRoutes.get('/:id', (c) => {
 grievanceRoutes.patch('/:id', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
-	const row = requireGrievance(db, c.req.param('id'));
+	const row = requireGrievance(db, c.req.param('id')!);
 
 	let body: unknown;
 	try {
@@ -428,6 +431,66 @@ grievanceRoutes.patch('/:id', async (c) => {
 			});
 			break;
 		}
+		case 'admin': {
+			let nextStatus: GrievanceStatusDb = row.status;
+			let adminTitle = row.title;
+			let adminDescription = row.description;
+			let adminCategory = row.category;
+
+			if (status !== undefined) {
+				if (typeof status !== 'string') {
+					throw new HttpError(400, 'bad_request', 'Invalid grievance status.');
+				}
+				nextStatus = statusToDb(status);
+			}
+			if (wantsContent) {
+				if (title !== undefined) {
+					if (typeof title !== 'string' || !title.trim()) {
+						throw new HttpError(400, 'bad_request', 'Title must not be empty.');
+					}
+					if (title.trim().length > MAX_TITLE_LENGTH) {
+						throw new HttpError(
+							400,
+							'bad_request',
+							`Title must be at most ${MAX_TITLE_LENGTH} characters.`
+						);
+					}
+					adminTitle = title.trim();
+				}
+				if (description !== undefined) {
+					if (typeof description !== 'string' || !description.trim()) {
+						throw new HttpError(400, 'bad_request', 'Description must not be empty.');
+					}
+					if (description.trim().length > MAX_DESCRIPTION_LENGTH) {
+						throw new HttpError(
+							400,
+							'bad_request',
+							`Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`
+						);
+					}
+					adminDescription = description.trim();
+				}
+				if (category !== undefined) {
+					if (typeof category !== 'string') {
+						throw new HttpError(400, 'bad_request', 'Invalid grievance category.');
+					}
+					adminCategory = parseCategory(category);
+				}
+			}
+			const ts = nowIso();
+			db.prepare(
+				'UPDATE grievances SET title = ?, description = ?, category = ?, status = ?, updated_at = ? WHERE id = ?'
+			).run(adminTitle, adminDescription, adminCategory, nextStatus, ts, row.id);
+			if (status !== undefined) {
+				securityLog('grievance_status_changed', {
+					userId: user.id,
+					role: user.role,
+					resourceId: row.id,
+					newStatus: nextStatus
+				});
+			}
+			break;
+		}
 		default: {
 			const _exhaustive: never = user.role;
 			throw new HttpError(500, 'internal', 'Internal server error.');
@@ -436,4 +499,35 @@ grievanceRoutes.patch('/:id', async (c) => {
 	}
 
 	return c.json({ data: assembleGrievance(db, requireGrievance(db, row.id)) });
+});
+
+/**
+ * DELETE /api/grievances/:id
+ *
+ * Delete a grievance (Admin only).
+ */
+grievanceRoutes.delete('/:id', (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+	const row = requireGrievance(db, c.req.param('id')!);
+
+	if (user.role !== 'admin') {
+		securityLog('authorization_failure', {
+			userId: user.id,
+			role: user.role,
+			resourceId: row.id,
+			reason: 'delete_grievance_requires_admin'
+		});
+		throw new HttpError(403, 'unauthorized', 'Only administrators can delete grievances.');
+	}
+
+	deleteGrievance(db, row.id);
+
+	securityLog('grievance_deleted', {
+		userId: user.id,
+		role: user.role,
+		resourceId: row.id
+	});
+
+	return c.json({ ok: true });
 });

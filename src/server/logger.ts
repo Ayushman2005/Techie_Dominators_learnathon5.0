@@ -20,7 +20,11 @@ export type SecurityEventType =
 	| 'file_upload_rejected'
 	| 'grievance_created'
 	| 'grievance_status_changed'
+	| 'grievance_deleted'
 	| 'comment_created'
+	| 'user_created'
+	| 'user_updated'
+	| 'user_deleted'
 	| 'suspicious_request';
 
 export interface SecurityLogContext {

@@ -4,5 +4,6 @@
 
 	// Root entry: send the user where their session dictates.
 	const user = getSession();
-	redirect(307, user ? (user.role === 'warden' ? '/warden' : '/student') : '/login');
+	const target = user ? (user.role === 'admin' ? '/admin' : user.role === 'warden' ? '/warden' : '/student') : '/login';
+	redirect(307, target);
 </script>

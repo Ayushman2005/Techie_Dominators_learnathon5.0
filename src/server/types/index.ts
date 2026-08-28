@@ -1,4 +1,4 @@
-export type Role = 'student' | 'warden';
+export type Role = 'student' | 'warden' | 'admin';
 
 export type GrievanceStatusDb = 'open' | 'in_progress' | 'resolved';
 

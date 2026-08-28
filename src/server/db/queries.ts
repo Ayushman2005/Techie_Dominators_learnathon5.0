@@ -5,6 +5,7 @@ import type {
 	CommentRow,
 	GrievanceRow,
 	PublicGrievance,
+	Role,
 	SessionUser,
 	UserRow
 } from '../types/index.ts';
@@ -78,8 +79,75 @@ export function requireGrievance(db: Database, id: string): GrievanceRow {
 	return row;
 }
 
+export function listUsers(db: Database, role?: Role): UserRow[] {
+	if (role) {
+		return db.prepare('SELECT * FROM users WHERE role = ? ORDER BY created_at DESC').all(role) as UserRow[];
+	}
+	return db.prepare('SELECT * FROM users ORDER BY created_at DESC').all() as UserRow[];
+}
+
+export function countUsersByRole(db: Database): { student: number; warden: number; admin: number; total: number } {
+	const rows = db.prepare('SELECT role, COUNT(*) as count FROM users GROUP BY role').all() as { role: Role; count: number }[];
+	const counts: { student: number; warden: number; admin: number; total: number } = {
+		student: 0,
+		warden: 0,
+		admin: 0,
+		total: 0
+	};
+	for (const r of rows) {
+		if (r.role === 'student' || r.role === 'warden' || r.role === 'admin') {
+			counts[r.role] = r.count;
+			counts.total += r.count;
+		}
+	}
+	return counts;
+}
+
+export function createUser(
+	db: Database,
+	user: { id: string; name: string; email: string; password_hash: string; role: Role; room: string | null; created_at: string }
+): UserRow {
+	db.prepare(
+		`INSERT INTO users (id, name, email, password_hash, role, room, created_at)
+     VALUES (@id, @name, @email, @password_hash, @role, @room, @created_at)`
+	).run(user);
+	return findUserById(db, user.id)!;
+}
+
+export function updateUser(
+	db: Database,
+	id: string,
+	updates: { name?: string; email?: string; password_hash?: string; role?: Role; room?: string | null }
+): UserRow {
+	const user = findUserById(db, id);
+	if (!user) {
+		throw new HttpError(404, 'not_found', 'User not found.');
+	}
+	const nextName = updates.name !== undefined ? updates.name : user.name;
+	const nextEmail = updates.email !== undefined ? updates.email : user.email;
+	const nextPasswordHash = updates.password_hash !== undefined ? updates.password_hash : user.password_hash;
+	const nextRole = updates.role !== undefined ? updates.role : user.role;
+	const nextRoom = updates.room !== undefined ? updates.room : user.room;
+
+	db.prepare(
+		'UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, room = ? WHERE id = ?'
+	).run(nextName, nextEmail, nextPasswordHash, nextRole, nextRoom, id);
+
+	return findUserById(db, id)!;
+}
+
+export function deleteUser(db: Database, id: string): void {
+	// First clean up any attachments stored on disk if needed, cascading foreign keys delete db rows
+	db.prepare('DELETE FROM users WHERE id = ?').run(id);
+}
+
+export function deleteGrievance(db: Database, id: string): void {
+	db.prepare('DELETE FROM grievances WHERE id = ?').run(id);
+}
+
 export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): void {
 	switch (user.role) {
+		case 'admin':
 		case 'warden':
 			return;
 		case 'student':
@@ -93,6 +161,18 @@ export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): vo
 			void _exhaustive;
 		}
 	}
+}
+
+export function nextUserId(db: Database, role: Role): string {
+	const prefix = role === 'admin' ? 'adm-' : role === 'warden' ? 'war-' : 'stu-';
+	const rows = db.prepare('SELECT id FROM users').all() as { id: string }[];
+	let max = 0;
+	for (const row of rows) {
+		if (!row.id.startsWith(prefix)) continue;
+		const n = Number.parseInt(row.id.slice(prefix.length), 10);
+		if (!Number.isNaN(n) && n > max) max = n;
+	}
+	return `${prefix}${max + 1}`;
 }
 
 function nextPrefixedId(db: Database, table: 'grievances' | 'comments' | 'attachments', prefix: string): string {

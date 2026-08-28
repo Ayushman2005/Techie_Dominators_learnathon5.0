@@ -15,15 +15,19 @@ import type {
 	CommentService,
 	GrievanceService,
 	UserService,
-	CreateGrievanceInput
+	CreateGrievanceInput,
+	UserStats
 } from '$lib/services/types';
 import type {
 	Attachment,
 	AuthResult,
 	Comment,
+	CreateUserInput,
 	Grievance,
 	GrievanceStatus,
 	Result,
+	Role,
+	UpdateUserInput,
 	User
 } from '$lib/types';
 
@@ -116,8 +120,54 @@ function findUser(id: string): User | null {
 // ---------------------------------------------------------------------------
 
 class MockUserService implements UserService {
+	async list(role?: Role): Promise<Result<User[]>> {
+		let list = Object.values(MOCK_USERS);
+		if (role) list = list.filter((u) => u.role === role);
+		return delay({ ok: true as const, data: list.map((u) => ({ ...u })) });
+	}
+
 	async getById(id: string): Promise<User | null> {
 		return delay(MOCK_USERS[id] ?? null, 80);
+	}
+
+	async create(input: CreateUserInput): Promise<Result<User>> {
+		const newId = `usr-${Date.now()}`;
+		const user: User = {
+			id: newId,
+			name: input.name,
+			email: input.email,
+			role: input.role,
+			room: input.room,
+			createdAt: nowIso()
+		};
+		MOCK_USERS[newId] = user;
+		return delay({ ok: true as const, data: { ...user } });
+	}
+
+	async update(id: string, input: UpdateUserInput): Promise<Result<User>> {
+		const user = MOCK_USERS[id];
+		if (!user) return delay({ ok: false as const, error: 'User not found.' });
+		if (input.name) user.name = input.name;
+		if (input.email) user.email = input.email;
+		if (input.role) user.role = input.role;
+		if (input.room !== undefined) user.room = input.room;
+		return delay({ ok: true as const, data: { ...user } });
+	}
+
+	async delete(id: string): Promise<Result<void>> {
+		delete MOCK_USERS[id];
+		return delay({ ok: true as const, data: undefined });
+	}
+
+	async getStats(): Promise<Result<UserStats>> {
+		const list = Object.values(MOCK_USERS);
+		const stats: UserStats = {
+			student: list.filter((u) => u.role === 'student').length,
+			warden: list.filter((u) => u.role === 'warden').length,
+			admin: list.filter((u) => u.role === 'admin').length,
+			total: list.length
+		};
+		return delay({ ok: true as const, data: stats });
 	}
 }
 
@@ -150,28 +200,27 @@ class MockGrievanceService implements GrievanceService {
 	}
 
 	async create(input: CreateGrievanceInput): Promise<Result<Grievance>> {
-		const student = MOCK_USERS[input.studentId];
-		if (!student || student.role !== 'student') {
-			return delay({ ok: false as const, error: 'Only students can file grievances.' });
+		const student = findUser(input.studentId);
+		if (!student) {
+			return delay({ ok: false as const, error: 'Unknown student.' });
 		}
 		const id = nextGrievanceId();
-		const attachments: Attachment[] = input.attachment
-			? [
-					{
-						id: `att-${id.toLowerCase()}-1`,
-						filename: input.attachment.filename,
-						sizeBytes: input.attachment.sizeBytes,
-						contentType: input.attachment.contentType
-					}
-				]
-			: [];
+		const attachments: Attachment[] = [];
+		if (input.attachment) {
+			attachments.push({
+				id: `att-${id}`,
+				filename: input.attachment.filename,
+				sizeBytes: input.attachment.sizeBytes,
+				contentType: input.attachment.contentType
+			});
+		}
 		const grievance: Grievance = {
 			id,
 			title: input.title,
-			description: input.description,
 			category: input.category,
+			description: input.description,
 			status: 'Open',
-			studentId: student.id,
+			studentId: input.studentId,
 			student,
 			createdAt: nowIso(),
 			updatedAt: nowIso(),
@@ -190,6 +239,14 @@ class MockGrievanceService implements GrievanceService {
 		g.status = status;
 		touch(g);
 		return delay({ ok: true as const, data: clone(g) });
+	}
+
+	async delete(id: string): Promise<Result<void>> {
+		const idx = grievances.findIndex((x) => x.id === id);
+		if (idx !== -1) {
+			grievances.splice(idx, 1);
+		}
+		return delay({ ok: true as const, data: undefined });
 	}
 }
 

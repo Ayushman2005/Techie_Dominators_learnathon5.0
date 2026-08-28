@@ -33,7 +33,8 @@
 			// getSession() is already updated; route guard redirects by role.
 			const { getSession } = await import('$lib/stores/auth.svelte');
 			const user = getSession();
-			await goto(user?.role === 'warden' ? '/warden' : '/student', { replaceState: true });
+			const target = user?.role === 'admin' ? '/admin' : user?.role === 'warden' ? '/warden' : '/student';
+			await goto(target, { replaceState: true });
 		} else {
 			error = result.error ?? 'Sign-in failed. Please try again.';
 		}
@@ -46,19 +47,19 @@
 	<div class="w-full max-w-sm">
 		<div class="mb-6 flex flex-col items-center text-center">
 			<span
-				class="bg-primary text-primary-foreground mb-3 flex size-11 items-center justify-center rounded-lg"
+				class="bg-primary text-primary-foreground mb-3 flex size-11 items-center justify-center rounded-lg shadow-sm"
 				aria-hidden="true"
 			>
 				<SchoolIcon class="size-6" />
 			</span>
-			<h1 class="text-xl font-semibold tracking-tight">HostelGrievance</h1>
-			<p class="text-muted-foreground mt-1 text-sm">GIET University · Hostel Administration</p>
+			<h1 class="text-2xl font-bold tracking-tight">HostelGrievance</h1>
+			<p class="text-muted-foreground mt-1 text-sm">GIET University · Hostel Administration Portal</p>
 		</div>
 
-		<Card>
+		<Card class="shadow-sm">
 			<CardHeader>
 				<CardTitle>Sign in</CardTitle>
-				<CardDescription>Use your university account to continue.</CardDescription>
+				<CardDescription>Enter your university account credentials to continue.</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<form onsubmit={handleSubmit} class="space-y-4" novalidate>
@@ -95,11 +96,5 @@
 				</form>
 			</CardContent>
 		</Card>
-
-		<p class="text-muted-foreground mt-6 text-center text-xs leading-relaxed">
-			Demo environment — development credentials only:<br />
-			Student: student@example.test / student123<br />
-			Warden: warden@example.test / warden123
-		</p>
 	</div>
 </main>

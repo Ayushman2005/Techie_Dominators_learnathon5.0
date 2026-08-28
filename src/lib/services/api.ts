@@ -7,9 +7,20 @@ import type {
 	CommentService,
 	CreateGrievanceInput,
 	GrievanceService,
-	UserService
+	UserService,
+	UserStats
 } from '$lib/services/types';
-import type { AuthResult, Comment, Grievance, GrievanceStatus, Result, User } from '$lib/types';
+import type {
+	AuthResult,
+	Comment,
+	CreateUserInput,
+	Grievance,
+	GrievanceStatus,
+	Result,
+	Role,
+	UpdateUserInput,
+	User
+} from '$lib/types';
 
 const SESSION_KEY = 'hg.session.user';
 
@@ -69,8 +80,70 @@ class ApiAuthService implements AuthService {
 }
 
 class ApiUserService implements UserService {
-	async getById(_id: string): Promise<User | null> {
-		return null;
+	async list(role?: Role): Promise<Result<User[]>> {
+		const url = role ? `/api/users?role=${encodeURIComponent(role)}` : '/api/users';
+		const res = await fetch(url, { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not load users.') };
+		}
+		return { ok: true, data: json.data as User[] };
+	}
+
+	async getById(id: string): Promise<User | null> {
+		const res = await fetch(`/api/users/${encodeURIComponent(id)}`, { credentials: 'include' });
+		if (!res.ok) return null;
+		const json = await readJson(res);
+		return (json.data as User) ?? null;
+	}
+
+	async create(input: CreateUserInput): Promise<Result<User>> {
+		const res = await fetch('/api/users', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(input)
+		});
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not create user.') };
+		}
+		return { ok: true, data: json.data as User };
+	}
+
+	async update(id: string, input: UpdateUserInput): Promise<Result<User>> {
+		const res = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(input)
+		});
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not update user.') };
+		}
+		return { ok: true, data: json.data as User };
+	}
+
+	async delete(id: string): Promise<Result<void>> {
+		const res = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		});
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not delete user.') };
+		}
+		return { ok: true, data: undefined };
+	}
+
+	async getStats(): Promise<Result<UserStats>> {
+		const res = await fetch('/api/users/stats', { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not load user stats.') };
+		}
+		return { ok: true, data: json.data as UserStats };
 	}
 }
 
@@ -138,6 +211,18 @@ class ApiGrievanceService implements GrievanceService {
 			body: JSON.stringify({ status })
 		});
 		return grievanceResult(res);
+	}
+
+	async delete(id: string): Promise<Result<void>> {
+		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		});
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not delete grievance.') };
+		}
+		return { ok: true, data: undefined };
 	}
 }
 

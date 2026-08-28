@@ -129,11 +129,40 @@ export function optionalToken(c: Context): string | undefined {
 }
 
 /**
+ * Require that the authenticated user has the 'admin' role.
+ * Throws 403 if non-admin tries to access an admin-only resource.
+ */
+export function requireAdmin(user: SessionUser): void {
+	if (user.role !== 'admin') {
+		securityLog('authorization_failure', {
+			userId: user.id,
+			role: user.role,
+			reason: 'admin_required'
+		});
+		throw new HttpError(403, 'unauthorized', 'Access denied. Administrator privileges required.');
+	}
+}
+
+/**
+ * Require that the authenticated user has either 'warden' or 'admin' role.
+ */
+export function requireWardenOrAdmin(user: SessionUser): void {
+	if (user.role !== 'warden' && user.role !== 'admin') {
+		securityLog('authorization_failure', {
+			userId: user.id,
+			role: user.role,
+			reason: 'staff_required'
+		});
+		throw new HttpError(403, 'unauthorized', 'Access denied.');
+	}
+}
+
+/**
  * Require that the authenticated user has the 'warden' role.
  * Throws 403 if a student or other role tries to access a warden-only resource.
  */
 export function requireWarden(user: SessionUser): void {
-	if (user.role !== 'warden') {
+	if (user.role !== 'warden' && user.role !== 'admin') {
 		securityLog('authorization_failure', {
 			userId: user.id,
 			role: user.role,

@@ -20,6 +20,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 	ensureUploadsDir(uploadsDir);
 	const studentHash = hashPassword('student123');
 	const wardenHash = hashPassword('warden123');
+	const adminHash = hashPassword('admin123');
 
 	const insertUser = db.prepare(
 		`INSERT INTO users (id, name, email, password_hash, role, room, created_at)
@@ -60,6 +61,15 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 			email: 'warden@example.test',
 			password_hash: wardenHash,
 			role: 'warden',
+			room: null,
+			created_at: '2026-08-01T08:00:00.000Z'
+		},
+		{
+			id: 'adm-1',
+			name: 'Dr. S. K. Panda (Admin)',
+			email: 'admin@example.test',
+			password_hash: adminHash,
+			role: 'admin',
 			room: null,
 			created_at: '2026-08-01T08:00:00.000Z'
 		}
