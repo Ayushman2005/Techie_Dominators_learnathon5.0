@@ -521,7 +521,7 @@ grievanceRoutes.delete('/:id', (c) => {
 		throw new HttpError(403, 'unauthorized', 'Only administrators can delete grievances.');
 	}
 
-	deleteGrievance(db, row.id);
+	deleteGrievance(db, row.id, c.get('uploadsDir'));
 
 	securityLog('grievance_deleted', {
 		userId: user.id,

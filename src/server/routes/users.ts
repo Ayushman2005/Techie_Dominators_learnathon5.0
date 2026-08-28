@@ -332,7 +332,7 @@ userRoutes.delete('/:id', (c) => {
 		throw new HttpError(403, 'unauthorized', 'Wardens cannot delete warden accounts.');
 	}
 
-	deleteUser(db, targetId);
+	deleteUser(db, targetId, c.get('uploadsDir'));
 
 	securityLog('user_deleted', {
 		deleterId: user.id,

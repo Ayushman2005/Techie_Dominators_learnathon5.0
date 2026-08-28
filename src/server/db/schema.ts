@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE TABLE IF NOT EXISTS grievances (
   id TEXT PRIMARY KEY,
-  student_id TEXT NOT NULL REFERENCES users(id),
+  student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   category TEXT NOT NULL,
   description TEXT NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS grievances (
 CREATE TABLE IF NOT EXISTS comments (
   id TEXT PRIMARY KEY,
   grievance_id TEXT NOT NULL REFERENCES grievances(id) ON DELETE CASCADE,
-  author_id TEXT NOT NULL REFERENCES users(id),
+  author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body TEXT NOT NULL,
   created_at TEXT NOT NULL
 );

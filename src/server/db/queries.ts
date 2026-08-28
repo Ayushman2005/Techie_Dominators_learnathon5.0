@@ -9,6 +9,8 @@ import type {
 	SessionUser,
 	UserRow
 } from '../types/index.ts';
+import { DEFAULT_UPLOADS_DIR } from '../config.ts';
+import { deleteStoredFile } from '../storage/attachments.ts';
 import { toPublicAttachment, toPublicComment, toPublicGrievance, toPublicUser } from './map.ts';
 
 export function findUserByEmail(db: Database, email: string): UserRow | undefined {
@@ -136,12 +138,20 @@ export function updateUser(
 	return findUserById(db, id)!;
 }
 
-export function deleteUser(db: Database, id: string): void {
+export function deleteUser(db: Database, id: string, uploadsDir: string = DEFAULT_UPLOADS_DIR): void {
 	// First clean up any attachments stored on disk if needed, cascading foreign keys delete db rows
+	const grievances = db.prepare('SELECT id FROM grievances WHERE student_id = ?').all(id) as { id: string }[];
+	for (const g of grievances) {
+		deleteGrievance(db, g.id, uploadsDir);
+	}
 	db.prepare('DELETE FROM users WHERE id = ?').run(id);
 }
 
-export function deleteGrievance(db: Database, id: string): void {
+export function deleteGrievance(db: Database, id: string, uploadsDir: string = DEFAULT_UPLOADS_DIR): void {
+	const attachments = listAttachmentRows(db, id);
+	for (const att of attachments) {
+		deleteStoredFile(uploadsDir, att.stored_filename);
+	}
 	db.prepare('DELETE FROM grievances WHERE id = ?').run(id);
 }
 

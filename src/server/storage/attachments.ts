@@ -75,6 +75,24 @@ export function resetUploadsDir(dir: string): void {
 	mkdirSync(dir, { recursive: true });
 }
 
+export function deleteStoredFile(uploadsDir: string, storedName: string): void {
+	if (storedName.includes('/') || storedName.includes('\\') || storedName.includes('..')) {
+		return;
+	}
+	const full = resolve(join(uploadsDir, storedName));
+	const root = resolve(uploadsDir);
+	if (full !== root && !full.startsWith(root + sep)) {
+		return;
+	}
+	if (existsSync(full)) {
+		try {
+			rmSync(full, { force: true });
+		} catch {
+			// Ignore if file could not be deleted
+		}
+	}
+}
+
 /**
  * Sanitize the original filename for display/metadata storage only.
  * This value is NEVER used as a filesystem path — it is purely cosmetic.
