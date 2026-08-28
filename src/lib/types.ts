@@ -89,3 +89,50 @@ export type AuthResult =
 export type Result<T> =
 	| { ok: true; data: T }
 	| { ok: false; error: string };
+
+export type AuditLogRole = Role | 'system';
+export type AuditLogStatus = 'success' | 'failure' | 'warning' | 'info';
+
+export interface AuditLog {
+	id: string;
+	eventType: string;
+	action: string;
+	actorId?: string;
+	actorName?: string;
+	actorEmail?: string;
+	actorRole: AuditLogRole;
+	targetId?: string;
+	targetType?: string;
+	details?: Record<string, unknown>;
+	ipAddress?: string;
+	status: AuditLogStatus;
+	createdAt: string;
+}
+
+export interface AuditLogStats {
+	totalEvents: number;
+	studentEvents: number;
+	wardenEvents: number;
+	adminEvents: number;
+	systemEvents: number;
+	warningEvents: number;
+	todayEvents: number;
+}
+
+export interface AuditLogFilters {
+	role?: AuditLogRole | 'all';
+	eventType?: string;
+	status?: AuditLogStatus | 'all';
+	search?: string;
+	page?: number;
+	limit?: number;
+}
+
+export interface AuditLogListResponse {
+	data: AuditLog[];
+	total: number;
+	page: number;
+	limit: number;
+	totalPages: number;
+}
+

@@ -254,10 +254,169 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
      VALUES (@id, @grievance_id, @original_filename, @stored_filename, @mime_type, @size_bytes, @data, @created_at)`
 	);
 
+	const insertAuditLog = db.prepare(
+		`INSERT INTO audit_logs (id, event_type, action, actor_id, actor_name, actor_email, actor_role, target_id, target_type, details, ip_address, status, created_at)
+     VALUES (@id, @event_type, @action, @actor_id, @actor_name, @actor_email, @actor_role, @target_id, @target_type, @details, @ip_address, @status, @created_at)`
+	);
+
+	const auditLogs = [
+		{
+			id: 'aud-1',
+			event_type: 'user.created',
+			action: 'System initialized administrator account',
+			actor_id: 'adm-1',
+			actor_name: 'Dr. S. K. Panda (Admin)',
+			actor_email: 'admin@example.test',
+			actor_role: 'admin',
+			target_id: 'adm-1',
+			target_type: 'user',
+			details: JSON.stringify({ role: 'admin', setup: true }),
+			ip_address: '127.0.0.1',
+			status: 'success',
+			created_at: '2026-08-01T08:00:00.000Z'
+		},
+		{
+			id: 'aud-2',
+			event_type: 'user.created',
+			action: 'Warden registered student: Aarav Mehta',
+			actor_id: 'war-1',
+			actor_name: 'Mr. K. Sahu',
+			actor_email: 'warden@example.test',
+			actor_role: 'warden',
+			target_id: 'stu-1',
+			target_type: 'user',
+			details: JSON.stringify({ name: 'Aarav Mehta', email: 'student@example.test', room: 'B-204', role: 'student' }),
+			ip_address: '192.168.1.45',
+			status: 'success',
+			created_at: '2026-08-01T08:05:00.000Z'
+		},
+		{
+			id: 'aud-3',
+			event_type: 'auth.login_success',
+			action: 'Signed in as student',
+			actor_id: 'stu-1',
+			actor_name: 'Aarav Mehta',
+			actor_email: 'student@example.test',
+			actor_role: 'student',
+			target_id: 'stu-1',
+			target_type: 'user',
+			details: JSON.stringify({ device: 'Mobile Safari' }),
+			ip_address: '192.168.1.102',
+			status: 'success',
+			created_at: '2026-08-13T09:10:00.000Z'
+		},
+		{
+			id: 'aud-4',
+			event_type: 'grievance.created',
+			action: 'Filed complaint: Water leaking from bathroom ceiling',
+			actor_id: 'stu-1',
+			actor_name: 'Aarav Mehta',
+			actor_email: 'student@example.test',
+			actor_role: 'student',
+			target_id: 'GRV-0001',
+			target_type: 'grievance',
+			details: JSON.stringify({ category: 'Water', studentRoom: 'B-204', priority: 'high' }),
+			ip_address: '192.168.1.102',
+			status: 'success',
+			created_at: '2026-08-13T09:15:00.000Z'
+		},
+		{
+			id: 'aud-5',
+			event_type: 'attachment.uploaded',
+			action: 'Uploaded attachment for GRV-0001',
+			actor_id: 'stu-1',
+			actor_name: 'Aarav Mehta',
+			actor_email: 'student@example.test',
+			actor_role: 'student',
+			target_id: 'GRV-0001',
+			target_type: 'grievance_attachment',
+			details: JSON.stringify({ filename: 'leaking-tap.jpg', mimeType: 'image/jpeg', sizeBytes: 1540 }),
+			ip_address: '192.168.1.102',
+			status: 'success',
+			created_at: '2026-08-13T09:15:00.000Z'
+		},
+		{
+			id: 'aud-6',
+			event_type: 'auth.login_success',
+			action: 'Signed in as warden',
+			actor_id: 'war-1',
+			actor_name: 'Mr. K. Sahu',
+			actor_email: 'warden@example.test',
+			actor_role: 'warden',
+			target_id: 'war-1',
+			target_type: 'user',
+			details: JSON.stringify({ device: 'Chrome Desktop' }),
+			ip_address: '192.168.1.45',
+			status: 'success',
+			created_at: '2026-08-13T11:00:00.000Z'
+		},
+		{
+			id: 'aud-7',
+			event_type: 'comment.created',
+			action: 'Warden responded to grievance #GRV-0001',
+			actor_id: 'war-1',
+			actor_name: 'Mr. K. Sahu',
+			actor_email: 'warden@example.test',
+			actor_role: 'warden',
+			target_id: 'GRV-0001',
+			target_type: 'grievance',
+			details: JSON.stringify({ grievanceTitle: 'Water leaking from bathroom ceiling', commentSnippet: 'Plumber Mr. Ramesh has been notified...' }),
+			ip_address: '192.168.1.45',
+			status: 'success',
+			created_at: '2026-08-13T11:30:00.000Z'
+		},
+		{
+			id: 'aud-8',
+			event_type: 'grievance.status_changed',
+			action: 'Warden updated status to In Progress',
+			actor_id: 'war-1',
+			actor_name: 'Mr. K. Sahu',
+			actor_email: 'warden@example.test',
+			actor_role: 'warden',
+			target_id: 'GRV-0001',
+			target_type: 'grievance',
+			details: JSON.stringify({ grievanceTitle: 'Water leaking from bathroom ceiling', oldStatus: 'Open', newStatus: 'In Progress' }),
+			ip_address: '192.168.1.45',
+			status: 'success',
+			created_at: '2026-08-14T10:12:00.000Z'
+		},
+		{
+			id: 'aud-9',
+			event_type: 'grievance.created',
+			action: 'Filed complaint: Corridor tube lights not working',
+			actor_id: 'stu-1',
+			actor_name: 'Aarav Mehta',
+			actor_email: 'student@example.test',
+			actor_role: 'student',
+			target_id: 'GRV-0002',
+			target_type: 'grievance',
+			details: JSON.stringify({ category: 'Electricity', studentRoom: 'B-204' }),
+			ip_address: '192.168.1.102',
+			status: 'success',
+			created_at: '2026-08-14T18:30:00.000Z'
+		},
+		{
+			id: 'aud-10',
+			event_type: 'grievance.status_changed',
+			action: 'Warden updated status to Resolved',
+			actor_id: 'war-1',
+			actor_name: 'Mr. K. Sahu',
+			actor_email: 'warden@example.test',
+			actor_role: 'warden',
+			target_id: 'GRV-0002',
+			target_type: 'grievance',
+			details: JSON.stringify({ grievanceTitle: 'Corridor tube lights not working', oldStatus: 'Open', newStatus: 'Resolved' }),
+			ip_address: '192.168.1.45',
+			status: 'success',
+			created_at: '2026-08-15T14:45:00.000Z'
+		}
+	];
+
 	db.transaction(() => {
 		for (const user of users) insertUser.run(user);
 		for (const g of grievances) insertGrievance.run(g);
 		for (const c of comments) insertComment.run(c);
+		for (const log of auditLogs) insertAuditLog.run(log);
 
 		const files = [
 			{

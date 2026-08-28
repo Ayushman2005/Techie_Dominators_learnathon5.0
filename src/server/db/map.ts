@@ -3,6 +3,8 @@ import type {
 	AttachmentRow,
 	CommentRow,
 	GrievanceCategory,
+	AuditLogRow,
+	PublicAuditLog,
 	PublicAttachment,
 	PublicComment,
 	PublicGrievance,
@@ -64,3 +66,31 @@ export function toPublicGrievance(
 		comments
 	};
 }
+
+export function toPublicAuditLog(row: AuditLogRow): PublicAuditLog {
+	let parsedDetails: Record<string, unknown> | undefined;
+	if (row.details) {
+		try {
+			parsedDetails = JSON.parse(row.details);
+		} catch {
+			parsedDetails = { raw: row.details };
+		}
+	}
+
+	return {
+		id: row.id,
+		eventType: row.event_type,
+		action: row.action,
+		actorId: row.actor_id ?? undefined,
+		actorName: row.actor_name ?? undefined,
+		actorEmail: row.actor_email ?? undefined,
+		actorRole: row.actor_role,
+		targetId: row.target_id ?? undefined,
+		targetType: row.target_type ?? undefined,
+		details: parsedDetails,
+		ipAddress: row.ip_address ?? undefined,
+		status: row.status,
+		createdAt: row.created_at
+	};
+}
+

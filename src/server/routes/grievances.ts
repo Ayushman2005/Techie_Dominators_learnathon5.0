@@ -18,7 +18,7 @@ import {
 import type { CommentRow, AttachmentRow, GrievanceStatusDb } from '../types/index.ts';
 import { toPublicAttachment, toPublicComment, toPublicUser } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
-import { parseCategory, statusToDb } from '../http/status.ts';
+import { parseCategory, statusToDb, statusToUi } from '../http/status.ts';
 import {
 	bufferFromUpload,
 	newStoredName,
@@ -27,6 +27,7 @@ import {
 } from '../storage/attachments.ts';
 import { securityLog } from '../logger.ts';
 import { commentRateLimit, createGrievanceRateLimit } from '../middleware/ratelimit.ts';
+import { recordAuditLog } from '../audit.ts';
 
 // Text field limits to prevent abuse and oversized inputs
 const MAX_TITLE_LENGTH = 200;
@@ -139,6 +140,23 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
      VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`
 	).run(id, user.id, title, parsedCategory, description, ts, ts);
 
+	recordAuditLog(c, db, {
+		eventType: 'grievance.created',
+		action: `Filed complaint: ${title}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: id,
+		targetType: 'grievance',
+		details: {
+			title,
+			category: parsedCategory,
+			studentRoom: user.room ?? 'Unassigned'
+		},
+		status: 'success'
+	});
+
 	if (upload) {
 		const bytes = await bufferFromUpload(upload);
 		// Stored filename is always server-generated — never user-controlled
@@ -157,16 +175,24 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 			bytes,
 			ts
 		);
-		securityLog('file_upload_success', {
-			userId: user.id,
-			resourceId: id,
-			resourceType: 'grievance_attachment',
-			sizeBytes: bytes.byteLength,
-			mimeType: upload.type
+		recordAuditLog(c, db, {
+			eventType: 'attachment.uploaded',
+			action: `Uploaded attachment for ${id}`,
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: id,
+			targetType: 'grievance_attachment',
+			details: {
+				filename: upload.name,
+				sizeBytes: bytes.byteLength,
+				mimeType: upload.type
+			},
+			status: 'success'
 		});
 	}
 
-	securityLog('grievance_created', { userId: user.id, resourceId: id });
 	return c.json({ data: assembleGrievance(db, requireGrievance(db, id)) }, 201);
 });
 
@@ -234,11 +260,20 @@ grievanceRoutes.post('/:id/comments', commentRateLimit, async (c) => {
 	).run(id, row.id, user.id, text, ts);
 	touchGrievance(db, row.id, ts);
 
-	securityLog('comment_created', {
-		userId: user.id,
-		role: user.role,
-		resourceId: row.id,
-		resourceType: 'grievance'
+	recordAuditLog(c, db, {
+		eventType: 'comment.created',
+		action: user.role === 'warden' ? `Warden responded to grievance #${row.id}` : `Posted comment on grievance #${row.id}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: row.id,
+		targetType: 'grievance',
+		details: {
+			grievanceTitle: row.title,
+			commentSnippet: text.length > 100 ? `${text.slice(0, 100)}...` : text
+		},
+		status: 'success'
 	});
 
 	const author = findUserById(db, user.id);
@@ -260,11 +295,17 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
 	if (user.role !== 'student' || row.student_id !== user.id) {
-		securityLog('authorization_failure', {
-			userId: user.id,
-			role: user.role,
-			resourceId: row.id,
-			reason: 'not_attachment_owner'
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Unauthorized attachment upload attempt',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: row.id,
+			targetType: 'grievance',
+			details: { reason: 'not_attachment_owner' },
+			status: 'warning'
 		});
 		throw new HttpError(403, 'unauthorized', 'Only the student owner can add attachments.');
 	}
@@ -291,12 +332,21 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 	).run(id, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, bytes, ts);
 	touchGrievance(db, row.id, ts);
 
-	securityLog('file_upload_success', {
-		userId: user.id,
-		resourceId: row.id,
-		resourceType: 'grievance_attachment',
-		sizeBytes: bytes.byteLength,
-		mimeType: upload.type
+	recordAuditLog(c, db, {
+		eventType: 'attachment.uploaded',
+		action: `Uploaded attachment for ${row.id}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: row.id,
+		targetType: 'grievance_attachment',
+		details: {
+			filename: upload.name,
+			sizeBytes: bytes.byteLength,
+			mimeType: upload.type
+		},
+		status: 'success'
 	});
 
 	const saved = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow;
@@ -358,11 +408,17 @@ grievanceRoutes.patch('/:id', async (c) => {
 		case 'student': {
 			// CRITICAL FIX: Ownership check — student can only edit their own grievances
 			if (row.student_id !== user.id) {
-				securityLog('authorization_failure', {
-					userId: user.id,
-					role: user.role,
-					resourceId: row.id,
-					reason: 'student_not_owner'
+				recordAuditLog(c, db, {
+					eventType: 'auth.unauthorized',
+					action: 'Unauthorized grievance modification attempt',
+					actorId: user.id,
+					actorName: user.name,
+					actorEmail: user.email,
+					actorRole: user.role,
+					targetId: row.id,
+					targetType: 'grievance',
+					details: { reason: 'student_not_owner' },
+					status: 'warning'
 				});
 				throw new HttpError(403, 'unauthorized', 'Access denied.');
 			}
@@ -408,6 +464,24 @@ grievanceRoutes.patch('/:id', async (c) => {
 			db.prepare(
 				'UPDATE grievances SET title = ?, description = ?, category = ?, updated_at = ? WHERE id = ?'
 			).run(nextTitle, nextDescription, nextCategory, ts, row.id);
+
+			recordAuditLog(c, db, {
+				eventType: 'grievance.updated',
+				action: `Updated grievance details: ${nextTitle}`,
+				actorId: user.id,
+				actorName: user.name,
+				actorEmail: user.email,
+				actorRole: user.role,
+				targetId: row.id,
+				targetType: 'grievance',
+				details: {
+					oldTitle: row.title,
+					newTitle: nextTitle,
+					oldCategory: row.category,
+					newCategory: nextCategory
+				},
+				status: 'success'
+			});
 			break;
 		}
 		case 'warden': {
@@ -424,11 +498,22 @@ grievanceRoutes.patch('/:id', async (c) => {
 				ts,
 				row.id
 			);
-			securityLog('grievance_status_changed', {
-				userId: user.id,
-				role: user.role,
-				resourceId: row.id,
-				newStatus: nextStatus
+
+			recordAuditLog(c, db, {
+				eventType: 'grievance.status_changed',
+				action: `Warden updated status to ${statusToUi(nextStatus)}`,
+				actorId: user.id,
+				actorName: user.name,
+				actorEmail: user.email,
+				actorRole: user.role,
+				targetId: row.id,
+				targetType: 'grievance',
+				details: {
+					grievanceTitle: row.title,
+					oldStatus: statusToUi(row.status),
+					newStatus: statusToUi(nextStatus)
+				},
+				status: 'success'
 			});
 			break;
 		}
@@ -482,14 +567,23 @@ grievanceRoutes.patch('/:id', async (c) => {
 			db.prepare(
 				'UPDATE grievances SET title = ?, description = ?, category = ?, status = ?, updated_at = ? WHERE id = ?'
 			).run(adminTitle, adminDescription, adminCategory, nextStatus, ts, row.id);
-			if (status !== undefined) {
-				securityLog('grievance_status_changed', {
-					userId: user.id,
-					role: user.role,
-					resourceId: row.id,
-					newStatus: nextStatus
-				});
-			}
+
+			recordAuditLog(c, db, {
+				eventType: status !== undefined ? 'grievance.status_changed' : 'grievance.updated',
+				action: status !== undefined ? `Admin changed status to ${statusToUi(nextStatus)}` : `Admin modified grievance #${row.id}`,
+				actorId: user.id,
+				actorName: user.name,
+				actorEmail: user.email,
+				actorRole: user.role,
+				targetId: row.id,
+				targetType: 'grievance',
+				details: {
+					grievanceTitle: adminTitle,
+					oldStatus: statusToUi(row.status),
+					newStatus: statusToUi(nextStatus)
+				},
+				status: 'success'
+			});
 			break;
 		}
 		default: {
@@ -513,21 +607,37 @@ grievanceRoutes.delete('/:id', (c) => {
 	const row = requireGrievance(db, c.req.param('id')!);
 
 	if (user.role !== 'admin') {
-		securityLog('authorization_failure', {
-			userId: user.id,
-			role: user.role,
-			resourceId: row.id,
-			reason: 'delete_grievance_requires_admin'
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Unauthorized grievance deletion attempt',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: row.id,
+			targetType: 'grievance',
+			details: { reason: 'delete_grievance_requires_admin' },
+			status: 'warning'
 		});
 		throw new HttpError(403, 'unauthorized', 'Only administrators can delete grievances.');
 	}
 
 	deleteGrievance(db, row.id, c.get('uploadsDir'));
 
-	securityLog('grievance_deleted', {
-		userId: user.id,
-		role: user.role,
-		resourceId: row.id
+	recordAuditLog(c, db, {
+		eventType: 'grievance.deleted',
+		action: `Permanently deleted grievance: ${row.title}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: row.id,
+		targetType: 'grievance',
+		details: {
+			grievanceTitle: row.title,
+			studentId: row.student_id
+		},
+		status: 'warning'
 	});
 
 	return c.json({ ok: true });

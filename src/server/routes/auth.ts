@@ -9,11 +9,11 @@ import {
 	setSessionCookie
 } from '../auth/session.ts';
 import { verifyPassword } from '../auth/passwords.ts';
-import { findUserByEmail } from '../db/queries.ts';
+import { findUserByEmail, findUserById } from '../db/queries.ts';
 import { toPublicUser } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
-import { securityLog } from '../logger.ts';
 import { loginRateLimit } from '../middleware/ratelimit.ts';
+import { recordAuditLog } from '../audit.ts';
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -54,7 +54,13 @@ authRoutes.post('/login', loginRateLimit, async (c) => {
 	const passwordValid = user ? verifyPassword(password, user.password_hash) : false;
 
 	if (!user || !passwordValid) {
-		securityLog('login_failure', { email });
+		recordAuditLog(c, db, {
+			eventType: 'auth.login_failed',
+			action: 'Failed sign in attempt',
+			actorRole: 'system',
+			details: { email },
+			status: 'warning'
+		});
 		// Generic message — never reveal whether the email exists or the password is wrong
 		throw new HttpError(401, 'unauthenticated', 'Invalid email or password.');
 	}
@@ -62,7 +68,18 @@ authRoutes.post('/login', loginRateLimit, async (c) => {
 	const token = createSession(db, user.id);
 	setSessionCookie(c, token);
 
-	securityLog('login_success', { userId: user.id, role: user.role, email: user.email });
+	recordAuditLog(c, db, {
+		eventType: 'auth.login_success',
+		action: `Signed in as ${user.role}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: user.id,
+		targetType: 'user',
+		status: 'success'
+	});
+
 	return c.json({ user: toPublicUser(user) });
 });
 
@@ -77,10 +94,32 @@ authRoutes.post('/logout', (c) => {
 	const db = c.get('db');
 	const token = optionalToken(c);
 	if (token) {
+		const sessionRow = db.prepare('SELECT user_id FROM sessions WHERE token = ?').get(token) as { user_id: string } | undefined;
+		const user = sessionRow ? findUserById(db, sessionRow.user_id) : undefined;
+
 		// Invalidate session in database — token is now permanently unusable
 		destroySession(db, token);
-		const userId = c.get('currentUserId' as never) as string | undefined;
-		securityLog('logout', { userId });
+
+		if (user) {
+			recordAuditLog(c, db, {
+				eventType: 'auth.logout',
+				action: 'Signed out of system',
+				actorId: user.id,
+				actorName: user.name,
+				actorEmail: user.email,
+				actorRole: user.role,
+				targetId: user.id,
+				targetType: 'user',
+				status: 'info'
+			});
+		} else {
+			recordAuditLog(c, db, {
+				eventType: 'auth.logout',
+				action: 'Signed out of system',
+				actorRole: 'system',
+				status: 'info'
+			});
+		}
 	}
 	clearSessionCookie(c);
 	return c.json({ ok: true });

@@ -8,7 +8,8 @@ import type {
 	CreateGrievanceInput,
 	GrievanceService,
 	UserService,
-	UserStats
+	UserStats,
+	AuditLogService
 } from '$lib/services/types';
 import type {
 	AuthResult,
@@ -19,7 +20,11 @@ import type {
 	Result,
 	Role,
 	UpdateUserInput,
-	User
+	User,
+	AuditLog,
+	AuditLogStats,
+	AuditLogFilters,
+	AuditLogListResponse
 } from '$lib/types';
 
 const SESSION_KEY = 'hg.session.user';
@@ -242,7 +247,72 @@ class ApiCommentService implements CommentService {
 	}
 }
 
+class ApiAuditLogService implements AuditLogService {
+	async list(filters: AuditLogFilters = {}): Promise<Result<AuditLogListResponse>> {
+		const params = new URLSearchParams();
+		if (filters.role && filters.role !== 'all') params.set('role', filters.role);
+		if (filters.eventType && filters.eventType !== 'all') params.set('eventType', filters.eventType);
+		if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+		if (filters.search) params.set('search', filters.search);
+		if (filters.page) params.set('page', String(filters.page));
+		if (filters.limit) params.set('limit', String(filters.limit));
+
+		const qs = params.toString();
+		const url = qs ? `/api/audit-logs?${qs}` : '/api/audit-logs';
+		const res = await fetch(url, { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not load audit logs.') };
+		}
+		return {
+			ok: true,
+			data: {
+				data: (json.data as AuditLog[]) ?? [],
+				total: (json.total as number) ?? 0,
+				page: (json.page as number) ?? 1,
+				limit: (json.limit as number) ?? 50,
+				totalPages: (json.totalPages as number) ?? 1
+			}
+		};
+	}
+
+	async getStats(): Promise<Result<AuditLogStats>> {
+		const res = await fetch('/api/audit-logs/stats', { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not load audit stats.') };
+		}
+		return { ok: true, data: json.data as AuditLogStats };
+	}
+
+	async exportLogs(format: 'json' | 'csv' = 'json', filters: AuditLogFilters = {}): Promise<Result<string | AuditLog[]>> {
+		const params = new URLSearchParams();
+		params.set('format', format);
+		if (filters.role && filters.role !== 'all') params.set('role', filters.role);
+		if (filters.eventType && filters.eventType !== 'all') params.set('eventType', filters.eventType);
+		if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+		if (filters.search) params.set('search', filters.search);
+
+		const url = `/api/audit-logs/export?${params.toString()}`;
+		const res = await fetch(url, { credentials: 'include' });
+		if (!res.ok) {
+			const json = await readJson(res);
+			return { ok: false, error: errorMessage(json, 'Could not export audit logs.') };
+		}
+
+		if (format === 'csv') {
+			const text = await res.text();
+			return { ok: true, data: text };
+		} else {
+			const json = await readJson(res);
+			return { ok: true, data: (json.data as AuditLog[]) ?? [] };
+		}
+	}
+}
+
 export const authService: AuthService = new ApiAuthService();
 export const userService: UserService = new ApiUserService();
 export const grievanceService: GrievanceService = new ApiGrievanceService();
 export const commentService: CommentService = new ApiCommentService();
+export const auditLogService: AuditLogService = new ApiAuditLogService();
+

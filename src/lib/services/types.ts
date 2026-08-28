@@ -13,7 +13,11 @@ import type {
 	Result,
 	Role,
 	UpdateUserInput,
-	User
+	User,
+	AuditLog,
+	AuditLogStats,
+	AuditLogFilters,
+	AuditLogListResponse
 } from '$lib/types';
 
 export interface AttachmentInput {
@@ -77,4 +81,11 @@ export interface CommentService {
 	add(grievanceId: string, authorId: string, body: string): Promise<Result<Comment>>;
 }
 
-export type { Attachment, AuthResult, Comment, Grievance, GrievanceStatus, Result, User };
+export interface AuditLogService {
+	list(filters?: AuditLogFilters): Promise<Result<AuditLogListResponse>>;
+	getStats(): Promise<Result<AuditLogStats>>;
+	exportLogs(format?: 'json' | 'csv', filters?: AuditLogFilters): Promise<Result<string | AuditLog[]>>;
+}
+
+export type { Attachment, AuthResult, Comment, Grievance, GrievanceStatus, Result, User, AuditLog, AuditLogStats, AuditLogFilters, AuditLogListResponse };
+

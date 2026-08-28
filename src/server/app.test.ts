@@ -1132,4 +1132,186 @@ describe('HostelGrievance Security Tests', () => {
 			expect(delGrv.status).toBe(403);
 		});
 	});
+
+	// ────────────────────────────────────────────────────────────────────────────
+	// Admin Audit Logs System Tests
+	// ────────────────────────────────────────────────────────────────────────────
+
+	describe('Admin Audit Logs & Activity Surveillance', () => {
+		it('admin can list audit logs and view aggregated audit statistics', async () => {
+			const { cookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const res = await app.request('/api/audit-logs', { headers: { Cookie: cookie } });
+			expect(res.status).toBe(200);
+			const json = await res.json();
+			expect(json).toHaveProperty('data');
+			expect(json).toHaveProperty('total');
+			expect(Array.isArray(json.data)).toBe(true);
+			expect(json.data.length).toBeGreaterThan(0);
+
+			const statsRes = await app.request('/api/audit-logs/stats', { headers: { Cookie: cookie } });
+			expect(statsRes.status).toBe(200);
+			const statsJson = await statsRes.json();
+			expect(statsJson.data).toHaveProperty('totalEvents');
+			expect(statsJson.data).toHaveProperty('studentEvents');
+			expect(statsJson.data).toHaveProperty('wardenEvents');
+			expect(statsJson.data).toHaveProperty('adminEvents');
+		});
+
+		it('students and wardens cannot access audit logs (403 Forbidden)', async () => {
+			// Student attempt
+			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
+			const stuRes = await app.request('/api/audit-logs', { headers: { Cookie: stuCookie } });
+			expect(stuRes.status).toBe(403);
+
+			const stuStats = await app.request('/api/audit-logs/stats', { headers: { Cookie: stuCookie } });
+			expect(stuStats.status).toBe(403);
+
+			// Warden attempt
+			const { cookie: warCookie } = await login(app, 'warden@example.test', 'warden123');
+			const warRes = await app.request('/api/audit-logs', { headers: { Cookie: warCookie } });
+			expect(warRes.status).toBe(403);
+
+			const warStats = await app.request('/api/audit-logs/stats', { headers: { Cookie: warCookie } });
+			expect(warStats.status).toBe(403);
+
+			// Unauthenticated attempt
+			const unauthRes = await app.request('/api/audit-logs');
+			expect(unauthRes.status).toBe(401);
+		});
+
+		it('student filing a grievance automatically creates an audit log entry', async () => {
+			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
+
+			const createRes = await app.request('/api/grievances', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: stuCookie },
+				body: JSON.stringify({
+					title: 'Broken ceiling fan in common room',
+					category: 'Electricity',
+					description: 'The ceiling fan has stopped rotating and makes a buzzing sound when turned on.'
+				})
+			});
+			expect(createRes.status).toBe(201);
+			const createdJson = await createRes.json();
+			const grievanceId = createdJson.data.id;
+
+			// Verify via admin audit logs
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+			const auditRes = await app.request(`/api/audit-logs?search=${grievanceId}`, { headers: { Cookie: admCookie } });
+			expect(auditRes.status).toBe(200);
+			const auditJson = await auditRes.json();
+
+			expect(auditJson.data.length).toBeGreaterThan(0);
+			const matching = auditJson.data.find((l: any) => l.targetId === grievanceId && l.eventType === 'grievance.created');
+			expect(matching).toBeDefined();
+			expect(matching.actorRole).toBe('student');
+			expect(matching.actorName).toBe('Aarav Mehta');
+			expect(matching.details.category).toBe('Electricity');
+		});
+
+		it('warden changing grievance status automatically creates an audit log entry', async () => {
+			const { cookie: warCookie } = await login(app, 'warden@example.test', 'warden123');
+
+			const patchRes = await app.request('/api/grievances/GRV-0003', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: warCookie },
+				body: JSON.stringify({ status: 'in_progress' })
+			});
+			expect(patchRes.status).toBe(200);
+
+			// Verify via admin audit logs
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+			const auditRes = await app.request('/api/audit-logs?search=GRV-0003', { headers: { Cookie: admCookie } });
+			expect(auditRes.status).toBe(200);
+			const auditJson = await auditRes.json();
+
+			const statusChangeLog = auditJson.data.find((l: any) => l.targetId === 'GRV-0003' && l.eventType === 'grievance.status_changed');
+			expect(statusChangeLog).toBeDefined();
+			expect(statusChangeLog.actorRole).toBe('warden');
+			expect(statusChangeLog.actorName).toBe('Mr. K. Sahu');
+			expect(statusChangeLog.details.newStatus).toBe('In Progress');
+		});
+
+		it('student and warden comments create audit log entries', async () => {
+			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
+
+			const cmtRes = await app.request('/api/grievances/GRV-0001/comments', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: stuCookie },
+				body: JSON.stringify({ body: 'Please resolve this urgently as water is increasing.' })
+			});
+			expect(cmtRes.status).toBe(201);
+
+			// Verify via admin audit logs
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+			const auditRes = await app.request('/api/audit-logs?eventType=comment.created', { headers: { Cookie: admCookie } });
+			expect(auditRes.status).toBe(200);
+			const auditJson = await auditRes.json();
+
+			const commentLog = auditJson.data.find((l: any) => l.targetId === 'GRV-0001' && l.eventType === 'comment.created');
+			expect(commentLog).toBeDefined();
+			expect(commentLog.actorRole).toBe('student');
+		});
+
+		it('warden creating a student account creates an audit log entry', async () => {
+			const { cookie: warCookie } = await login(app, 'warden@example.test', 'warden123');
+
+			const createRes = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: warCookie },
+				body: JSON.stringify({
+					name: 'Test Audit Student',
+					email: 'testauditstu@example.test',
+					password: 'password123',
+					role: 'student',
+					room: 'C-301'
+				})
+			});
+			expect(createRes.status).toBe(201);
+			const created = await createRes.json();
+
+			// Verify via admin audit logs
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+			const auditRes = await app.request(`/api/audit-logs?search=${created.data.id}`, { headers: { Cookie: admCookie } });
+			expect(auditRes.status).toBe(200);
+			const auditJson = await auditRes.json();
+
+			const userCreateLog = auditJson.data.find((l: any) => l.targetId === created.data.id && l.eventType === 'user.created');
+			expect(userCreateLog).toBeDefined();
+			expect(userCreateLog.actorRole).toBe('warden');
+			expect(userCreateLog.details.email).toBe('testauditstu@example.test');
+		});
+
+		it('supports audit log role filters, search, and CSV/JSON export', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			// Filter by student role
+			const stuOnly = await app.request('/api/audit-logs?role=student', { headers: { Cookie: admCookie } });
+			expect(stuOnly.status).toBe(200);
+			const stuJson = await stuOnly.json();
+			expect(stuJson.data.every((l: any) => l.actorRole === 'student')).toBe(true);
+
+			// Filter by warden role
+			const warOnly = await app.request('/api/audit-logs?role=warden', { headers: { Cookie: admCookie } });
+			expect(warOnly.status).toBe(200);
+			const warJson = await warOnly.json();
+			expect(warJson.data.every((l: any) => l.actorRole === 'warden')).toBe(true);
+
+			// Export CSV
+			const csvRes = await app.request('/api/audit-logs/export?format=csv', { headers: { Cookie: admCookie } });
+			expect(csvRes.status).toBe(200);
+			expect(csvRes.headers.get('content-type')).toContain('text/csv');
+			const csvText = await csvRes.text();
+			expect(csvText).toContain('Timestamp');
+			expect(csvText).toContain('Actor Role');
+
+			// Export JSON
+			const jsonRes = await app.request('/api/audit-logs/export?format=json', { headers: { Cookie: admCookie } });
+			expect(jsonRes.status).toBe(200);
+			const exportData = await jsonRes.json();
+			expect(Array.isArray(exportData.data)).toBe(true);
+		});
+	});
 });
+

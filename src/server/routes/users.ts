@@ -15,6 +15,7 @@ import {
 import { toPublicUser } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
 import { securityLog } from '../logger.ts';
+import { recordAuditLog } from '../audit.ts';
 import type { Role } from '../types/index.ts';
 
 export const userRoutes = new Hono<AppEnv>();
@@ -154,12 +155,22 @@ userRoutes.post('/', async (c) => {
 		created_at
 	});
 
-	securityLog('user_created', {
-		creatorId: user.id,
-		creatorRole: user.role,
-		newUserId: newUser.id,
-		newUserRole: newUser.role,
-		newUserEmail: newUser.email
+	recordAuditLog(c, db, {
+		eventType: 'user.created',
+		action: user.role === 'warden' ? `Warden registered student: ${name}` : `Admin created ${role} account: ${name}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: newUser.id,
+		targetType: 'user',
+		details: {
+			name: newUser.name,
+			email: newUser.email,
+			role: newUser.role,
+			room: newUser.room
+		},
+		status: 'success'
 	});
 
 	return c.json({ data: toPublicUser(newUser) }, 201);
@@ -189,21 +200,33 @@ userRoutes.patch('/:id', async (c) => {
 
 	// RBAC hierarchy check
 	if (targetUser.role === 'admin' && user.role !== 'admin') {
-		securityLog('authorization_failure', {
-			userId: user.id,
-			role: user.role,
-			targetUserId: targetUser.id,
-			reason: 'non_admin_modify_admin'
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Unauthorized attempt to modify admin account',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: targetUser.id,
+			targetType: 'user',
+			details: { reason: 'non_admin_modify_admin' },
+			status: 'warning'
 		});
 		throw new HttpError(403, 'unauthorized', 'Only administrators can modify admin accounts.');
 	}
 
 	if (targetUser.role === 'warden' && user.role !== 'admin') {
-		securityLog('authorization_failure', {
-			userId: user.id,
-			role: user.role,
-			targetUserId: targetUser.id,
-			reason: 'warden_modify_warden'
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Unauthorized attempt to modify warden account',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: targetUser.id,
+			targetType: 'user',
+			details: { reason: 'warden_modify_warden' },
+			status: 'warning'
 		});
 		throw new HttpError(403, 'unauthorized', 'Wardens cannot modify warden accounts.');
 	}
@@ -274,11 +297,22 @@ userRoutes.patch('/:id', async (c) => {
 
 	const updated = updateUser(db, targetId, updates);
 
-	securityLog('user_updated', {
-		modifierId: user.id,
-		modifierRole: user.role,
-		targetUserId: targetId,
-		targetUserRole: updated.role
+	recordAuditLog(c, db, {
+		eventType: 'user.updated',
+		action: user.role === 'warden' ? `Warden updated student ${targetUser.name}` : `Admin updated user ${targetUser.name}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: targetId,
+		targetType: 'user',
+		details: {
+			targetName: updated.name,
+			targetEmail: updated.email,
+			targetRole: updated.role,
+			changedFields: Object.keys(updates)
+		},
+		status: 'success'
 	});
 
 	return c.json({ data: toPublicUser(updated) });
@@ -313,32 +347,54 @@ userRoutes.delete('/:id', (c) => {
 
 	// RBAC hierarchy check
 	if (targetUser.role === 'admin' && user.role !== 'admin') {
-		securityLog('authorization_failure', {
-			userId: user.id,
-			role: user.role,
-			targetUserId: targetUser.id,
-			reason: 'non_admin_delete_admin'
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Unauthorized attempt to delete admin account',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: targetUser.id,
+			targetType: 'user',
+			details: { reason: 'non_admin_delete_admin' },
+			status: 'warning'
 		});
 		throw new HttpError(403, 'unauthorized', 'Only administrators can delete admin accounts.');
 	}
 
 	if (targetUser.role === 'warden' && user.role !== 'admin') {
-		securityLog('authorization_failure', {
-			userId: user.id,
-			role: user.role,
-			targetUserId: targetUser.id,
-			reason: 'warden_delete_warden'
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Unauthorized attempt to delete warden account',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: targetUser.id,
+			targetType: 'user',
+			details: { reason: 'warden_delete_warden' },
+			status: 'warning'
 		});
 		throw new HttpError(403, 'unauthorized', 'Wardens cannot delete warden accounts.');
 	}
 
 	deleteUser(db, targetId, c.get('uploadsDir'));
 
-	securityLog('user_deleted', {
-		deleterId: user.id,
-		deleterRole: user.role,
-		targetUserId: targetId,
-		targetUserRole: targetUser.role
+	recordAuditLog(c, db, {
+		eventType: 'user.deleted',
+		action: user.role === 'warden' ? `Warden removed student: ${targetUser.name}` : `Admin deleted user: ${targetUser.name}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: targetId,
+		targetType: 'user',
+		details: {
+			targetName: targetUser.name,
+			targetEmail: targetUser.email,
+			targetRole: targetUser.role
+		},
+		status: 'warning'
 	});
 
 	return c.json({ ok: true });

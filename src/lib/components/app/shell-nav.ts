@@ -6,6 +6,8 @@ import PlusCircleIcon from '@lucide/svelte/icons/plus-circle';
 import UsersIcon from '@lucide/svelte/icons/users';
 import GraduationCapIcon from '@lucide/svelte/icons/graduation-cap';
 
+import HistoryIcon from '@lucide/svelte/icons/history';
+
 export interface ShellNavItem {
 	label: string;
 	href: string;
@@ -30,7 +32,8 @@ export function shellNav(role: Role): ShellNavItem[] {
 			return [
 				{ label: 'Dashboard', href: '/admin', icon: LayoutDashboardIcon },
 				{ label: 'All Grievances', href: '/admin/grievances', icon: ClipboardListIcon },
-				{ label: 'User Management', href: '/admin/users', icon: UsersIcon }
+				{ label: 'User Management', href: '/admin/users', icon: UsersIcon },
+				{ label: 'Audit Logs', href: '/admin/audit-logs', icon: HistoryIcon }
 			];
 		default: {
 			const _exhaustive: never = role;

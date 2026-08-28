@@ -108,3 +108,58 @@ export type ErrorCode =
 	| 'not_found'
 	| 'conflict'
 	| 'internal';
+
+export type AuditLogRole = Role | 'system';
+export type AuditLogStatus = 'success' | 'failure' | 'warning' | 'info';
+
+export interface AuditLogRow {
+	id: string;
+	event_type: string;
+	action: string;
+	actor_id: string | null;
+	actor_name: string | null;
+	actor_email: string | null;
+	actor_role: AuditLogRole;
+	target_id: string | null;
+	target_type: string | null;
+	details: string | null;
+	ip_address: string | null;
+	status: AuditLogStatus;
+	created_at: string;
+}
+
+export interface PublicAuditLog {
+	id: string;
+	eventType: string;
+	action: string;
+	actorId?: string;
+	actorName?: string;
+	actorEmail?: string;
+	actorRole: AuditLogRole;
+	targetId?: string;
+	targetType?: string;
+	details?: Record<string, unknown>;
+	ipAddress?: string;
+	status: AuditLogStatus;
+	createdAt: string;
+}
+
+export interface AuditLogStats {
+	totalEvents: number;
+	studentEvents: number;
+	wardenEvents: number;
+	adminEvents: number;
+	systemEvents: number;
+	warningEvents: number;
+	todayEvents: number;
+}
+
+export interface AuditLogFilters {
+	role?: AuditLogRole | 'all';
+	eventType?: string;
+	status?: AuditLogStatus | 'all';
+	search?: string;
+	page?: number;
+	limit?: number;
+}
+

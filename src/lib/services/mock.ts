@@ -289,11 +289,145 @@ function clone(g: Grievance): Grievance {
 	};
 }
 
-// ---------------------------------------------------------------------------
-// Singletons
-// ---------------------------------------------------------------------------
+import type {
+	AuditLog,
+	AuditLogStats,
+	AuditLogFilters,
+	AuditLogListResponse,
+	AuditLogService
+} from '$lib/services/types';
+
+class MockAuditLogService implements AuditLogService {
+	private logs: AuditLog[] = [
+		{
+			id: 'aud-1',
+			eventType: 'user.created',
+			action: 'System initialized administrator account',
+			actorId: 'adm-1',
+			actorName: 'Dr. S. K. Panda (Admin)',
+			actorEmail: 'admin@example.test',
+			actorRole: 'admin',
+			targetId: 'adm-1',
+			targetType: 'user',
+			details: { role: 'admin', setup: true },
+			ipAddress: '127.0.0.1',
+			status: 'success',
+			createdAt: '2026-08-01T08:00:00.000Z'
+		},
+		{
+			id: 'aud-2',
+			eventType: 'user.created',
+			action: 'Warden registered student: Aarav Mehta',
+			actorId: 'war-1',
+			actorName: 'Mr. K. Sahu',
+			actorEmail: 'warden@example.test',
+			actorRole: 'warden',
+			targetId: 'stu-1',
+			targetType: 'user',
+			details: { name: 'Aarav Mehta', email: 'student@example.test', room: 'B-204' },
+			ipAddress: '192.168.1.45',
+			status: 'success',
+			createdAt: '2026-08-01T08:05:00.000Z'
+		},
+		{
+			id: 'aud-3',
+			eventType: 'auth.login_success',
+			action: 'Signed in as student',
+			actorId: 'stu-1',
+			actorName: 'Aarav Mehta',
+			actorEmail: 'student@example.test',
+			actorRole: 'student',
+			targetId: 'stu-1',
+			targetType: 'user',
+			details: { device: 'Mobile Safari' },
+			ipAddress: '192.168.1.102',
+			status: 'success',
+			createdAt: '2026-08-13T09:10:00.000Z'
+		},
+		{
+			id: 'aud-4',
+			eventType: 'grievance.created',
+			action: 'Filed complaint: Water leaking from bathroom ceiling',
+			actorId: 'stu-1',
+			actorName: 'Aarav Mehta',
+			actorEmail: 'student@example.test',
+			actorRole: 'student',
+			targetId: 'GRV-0001',
+			targetType: 'grievance',
+			details: { category: 'Water', studentRoom: 'B-204' },
+			ipAddress: '192.168.1.102',
+			status: 'success',
+			createdAt: '2026-08-13T09:15:00.000Z'
+		},
+		{
+			id: 'aud-5',
+			eventType: 'grievance.status_changed',
+			action: 'Warden updated status to In Progress',
+			actorId: 'war-1',
+			actorName: 'Mr. K. Sahu',
+			actorEmail: 'warden@example.test',
+			actorRole: 'warden',
+			targetId: 'GRV-0001',
+			targetType: 'grievance',
+			details: { grievanceTitle: 'Water leaking from bathroom ceiling', oldStatus: 'Open', newStatus: 'In Progress' },
+			ipAddress: '192.168.1.45',
+			status: 'success',
+			createdAt: '2026-08-14T10:12:00.000Z'
+		}
+	];
+
+	async list(filters: AuditLogFilters = {}): Promise<Result<AuditLogListResponse>> {
+		let filtered = [...this.logs];
+		if (filters.role && filters.role !== 'all') {
+			filtered = filtered.filter((l) => l.actorRole === filters.role);
+		}
+		if (filters.status && filters.status !== 'all') {
+			filtered = filtered.filter((l) => l.status === filters.status);
+		}
+		if (filters.search) {
+			const q = filters.search.toLowerCase();
+			filtered = filtered.filter((l) => l.action.toLowerCase().includes(q) || (l.actorName?.toLowerCase().includes(q)));
+		}
+		const page = filters.page ?? 1;
+		const limit = filters.limit ?? 50;
+		return delay({
+			ok: true,
+			data: {
+				data: filtered.slice((page - 1) * limit, page * limit),
+				total: filtered.length,
+				page,
+				limit,
+				totalPages: Math.ceil(filtered.length / limit) || 1
+			}
+		});
+	}
+
+	async getStats(): Promise<Result<AuditLogStats>> {
+		return delay({
+			ok: true,
+			data: {
+				totalEvents: this.logs.length,
+				studentEvents: this.logs.filter((l) => l.actorRole === 'student').length,
+				wardenEvents: this.logs.filter((l) => l.actorRole === 'warden').length,
+				adminEvents: this.logs.filter((l) => l.actorRole === 'admin').length,
+				systemEvents: this.logs.filter((l) => l.actorRole === 'system').length,
+				warningEvents: this.logs.filter((l) => l.status === 'warning' || l.status === 'failure').length,
+				todayEvents: this.logs.length
+			}
+		});
+	}
+
+	async exportLogs(format: 'json' | 'csv' = 'json'): Promise<Result<string | AuditLog[]>> {
+		if (format === 'csv') {
+			return delay({ ok: true, data: 'id,action,actorRole\naud-1,Login,admin' });
+		}
+		return delay({ ok: true, data: [...this.logs] });
+	}
+}
 
 export const authService: AuthService = new MockAuthService();
 export const userService: UserService = new MockUserService();
 export const grievanceService: GrievanceService = new MockGrievanceService();
 export const commentService: CommentService = new MockCommentService();
+export const auditLogService: AuditLogService = new MockAuditLogService();
+

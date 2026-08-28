@@ -48,10 +48,29 @@ CREATE TABLE IF NOT EXISTS attachments (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  action TEXT NOT NULL,
+  actor_id TEXT,
+  actor_name TEXT,
+  actor_email TEXT,
+  actor_role TEXT NOT NULL CHECK (actor_role IN ('student', 'warden', 'admin', 'system')),
+  target_id TEXT,
+  target_type TEXT,
+  details TEXT,
+  ip_address TEXT,
+  status TEXT NOT NULL DEFAULT 'success' CHECK (status IN ('success', 'failure', 'warning', 'info')),
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_grievances_student ON grievances(student_id);
 CREATE INDEX IF NOT EXISTS idx_comments_grievance ON comments(grievance_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_grievance ON attachments(grievance_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_role ON audit_logs(actor_role);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
 `;
 
 export function applySchema(db: Database): void {

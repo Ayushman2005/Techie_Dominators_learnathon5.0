@@ -3,5 +3,6 @@ export {
 	authService,
 	commentService,
 	grievanceService,
-	userService
+	userService,
+	auditLogService
 } from './api';
