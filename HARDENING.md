@@ -1,0 +1,35 @@
+# Security Hardening Report — HostelGrievance
+
+**Version**: 1.0  
+**Date**: 2026-08-28  
+**Scope**: Pre-deployment security hardening
+
+---
+
+## Findings
+
+| # | Finding | Risk | Change | Verification | Residual Risk |
+|---|---|---|---|---|---|
+| F-01 | **IDOR — `GET /api/grievances/:id`**: `assertCanViewGrievance()` existed but was never called; any student could read any other student's grievance | CRITICAL | Called `assertCanViewGrievance(user, row)` in the route handler | Test: `student cannot read another student's grievance` — passes | Correct authorization policy configuration required |
+| F-02 | **IDOR — `PATCH /api/grievances/:id`**: Student branch had no ownership check; any student could edit any grievance | CRITICAL | Added `row.student_id !== user.id` check in student PATCH branch | Test: `student cannot PATCH another student's grievance` — passes | None |
+| F-03 | **IDOR — `GET /api/attachments/:id`**: Only checked authentication, not grievance ownership; any student could download any attachment | CRITICAL | Load parent grievance, call `assertCanViewGrievance` before serving file | Test: `student cannot download another student's attachment` — passes | None |
+| F-04 | **IDOR — `GET /api/grievances/:id/comments` and `POST /:id/comments`**: No ownership check; any student could read/post comments on any grievance | HIGH | Added `assertCanViewGrievance(user, row)` to both comment routes | Tests: `student cannot read/post comments on another student's grievance` — pass | None |
+| F-05 | **CORS wildcard with credentials**: `allow_origins=["*"]` with `credentials: true` — any origin could make credentialed requests | CRITICAL | Replaced with explicit allowlist from `HOSTEL_ALLOWED_ORIGINS` env var; untrusted origins not reflected | Tests: `allows trusted origin`, `does not reflect untrusted origin`, `wildcard not used` — pass | Requires correct production env var configuration |
+| F-06 | **SHA-256 (unsalted) password hashing**: Instantly crackable via rainbow tables | CRITICAL | Replaced with bcrypt (10 rounds) — adaptive, salted, slow by design | Verified login/logout flow; all auth tests pass | Old database entries require `db:reset` to regenerate |
+| F-07 | **Session cookie missing HttpOnly**: Token readable by JavaScript (XSS theft possible) | HIGH | Added `httpOnly: true` to `setCookie()` | Test: `session cookie has HttpOnly and SameSite attributes` — passes | None |
+| F-08 | **Session cookie missing SameSite**: CSRF risk | HIGH | Added `sameSite: 'Strict'` to `setCookie()` | Test: `session cookie has HttpOnly and SameSite attributes` — passes | None |
+| F-09 | **Session expiry not validated**: `expires_at` stored in DB but never checked; expired sessions remained valid indefinitely | HIGH | Added expiry check in `readSessionUser()`; expired sessions deleted eagerly | Test: `expired session is rejected` — passes | None |
+| F-10 | **Logout did not destroy server session**: Only cleared client cookie; captured token remained usable | HIGH | Logout calls `destroySession(db, token)` before clearing cookie | Test: `logout destroys server-side session so token cannot be reused` — passes | None |
+| F-11 | **Raw error messages leaked to clients**: `handleError` returned `err.message` for unexpected errors — could expose SQL errors, stack traces, paths | HIGH | Unexpected errors logged server-side; clients receive only generic `"An unexpected error occurred."` | Test: `unexpected errors return generic message` — passes | Server logs must be protected |
+| F-12 | **No rate limiting on login**: Unlimited brute-force attempts possible | HIGH | Added sliding-window rate limiter: 10 attempts / 15 min per IP | Test: `rate-limits login after 10 failed attempts` — passes | In-memory; resets on process restart |
+| F-13 | **`newStoredName()` used user-supplied filename as stored path**: Path traversal and file overwrite possible | HIGH | `newStoredName()` now always generates a random UUID-based filename; original name stored as display metadata only | Test: `handles path-traversal-style filename safely` — passes | None |
+| F-14 | **No magic byte validation for uploads**: MIME-type spoofing (script disguised as image) possible | HIGH | Added magic byte signature validation for JPEG, PNG, GIF, WebP | Tests: `rejects wrong magic bytes`, `rejects non-image content with image MIME` — pass | MIME spoofing with valid image headers remains theoretical; re-encoding would further reduce risk |
+| F-15 | **No security headers**: No CSP, X-Content-Type-Options, Referrer-Policy, etc. | MEDIUM | Added middleware setting all major security headers on `/api/*` | Tests: all security header tests — pass | HSTS should be set by reverse proxy |
+| F-16 | **No input length limits**: Oversized inputs could cause DoS or excessive storage | MEDIUM | Added max lengths: title ≤ 200, description ≤ 5000, comment ≤ 2000 | Tests: all length limit tests — pass | None |
+| F-17 | **Attachment served with `Content-Disposition: inline`**: Browser could render potentially malicious content | MEDIUM | Changed to `Content-Disposition: attachment` to force download | Test: `attachment download sets Content-Disposition: attachment` — passes | None |
+| F-18 | **Student could change grievance status**: PATCH handler accepted `status` from students | MEDIUM | Student PATCH branch now rejects `status` field with 403 | Test: `student cannot change status of any grievance` — passes | None |
+| F-19 | **No security event logging**: No visibility into attacks, failed auth, authorization violations | MEDIUM | Added structured JSON security logger; events logged: login success/failure, logout, authz failures, file upload events, rate limit hits | Verified via test stderr output | Logs go to stdout; production should redirect to log aggregator |
+| F-20 | **Comment minimum length not enforced**: Empty or near-empty comments allowed | LOW | Added 3-character minimum length for comments | Test: `rejects comment that is too short` — passes | None |
+| F-21 | **`HOSTEL_ALLOWED_ORIGINS` not documented**: No env var for CORS in production | LOW | Added to `.env.example` with documentation | Manual review | Operator must configure correctly for production |
+| F-22 | **`.gitignore` missing key credential patterns**: `*.pem`, `*.key`, etc. not excluded | LOW | Added `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.crt`, `credentials.*`, `.env.local`, `secrets/` | Manual review | Historical commits not retroactively cleaned |
+| F-23 | **Login timing attack / username enumeration**: `verifyPassword` not called when user not found; timing difference revealed email existence | LOW | Always call `verifyPassword` regardless of user existence | Verified in auth.ts | Timing side-channel slightly reduced; full elimination requires constant-time DB lookup |
