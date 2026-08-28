@@ -1,48 +1,94 @@
+# Node Dependencies
 node_modules/
+.pnp
+.pnp.js
 
-# Logs and local tooling
+# Build, Bundler & Framework Output
+.svelte-kit/
+build/
+dist/
+.output/
+.vite/
+.vercel/
+.netlify/
+.wrangler/
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Logs & Diagnostics
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
+
+# Test Coverage
 coverage/
+.nyc_output/
 
-# Output
-.output
-.vercel
-.netlify
-.wrangler
-/.svelte-kit
-/build
-/.vite
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Env
+# Environment Variables & Config
 .env
 .env.*
 !.env.example
 !.env.test
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Local SQLite + uploaded files (keep directory markers)
-/data/*.db
-/data/*.db-*
+# Local SQLite Databases & WAL/SHM Journals
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
+/data/*
+!/data/.gitkeep
+
+# Uploaded Files & Attachments (keep folder in repo)
 /uploads/*
 !/uploads/.gitkeep
 
-# Vite
+# Vite Timestamps
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Security — private keys and credentials must never be committed
+# Security, Certificates & Secrets (Never commit credentials)
 *.pem
 *.key
 *.p12
 *.pfx
 *.crt
+*.cer
+*.der
 credentials.*
-.env.local
 secrets/
+id_rsa*
+id_ecdsa*
+id_ed25519*
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE & Editor specific files
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
