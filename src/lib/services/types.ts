@@ -10,6 +10,7 @@ import type {
 	Grievance,
 	GrievanceCategory,
 	GrievanceStatus,
+	ResolutionReview,
 	Result,
 	Role,
 	UpdateUserInput,
@@ -36,6 +37,12 @@ export interface CreateGrievanceInput {
 	attachment?: AttachmentInput | null;
 }
 
+export interface SubmitReviewInput {
+	rating: number;
+	feedback: string;
+	file: File;
+}
+
 export interface AuthService {
 	/** Validate credentials and return the session user (mock-only). */
 	signIn(email: string, password: string): Promise<AuthResult>;
@@ -58,6 +65,7 @@ export interface UserStats {
 
 export interface UserService {
 	list(role?: Role): Promise<Result<User[]>>;
+	listWardens(): Promise<Result<User[]>>;
 	getById(id: string): Promise<User | null>;
 	create(input: CreateUserInput): Promise<Result<User>>;
 	update(id: string, input: UpdateUserInput): Promise<Result<User>>;
@@ -75,6 +83,8 @@ export interface GrievanceService {
 	create(input: CreateGrievanceInput): Promise<Result<Grievance>>;
 	updateStatus(id: string, status: GrievanceStatus): Promise<Result<Grievance>>;
 	delete(id: string): Promise<Result<void>>;
+	submitReview(id: string, input: SubmitReviewInput): Promise<Result<Grievance>>;
+	getReview(id: string): Promise<Result<ResolutionReview | null>>;
 }
 
 export interface CommentService {
@@ -87,5 +97,18 @@ export interface AuditLogService {
 	exportLogs(format?: 'json' | 'csv', filters?: AuditLogFilters): Promise<Result<string | AuditLog[]>>;
 }
 
-export type { Attachment, AuthResult, Comment, Grievance, GrievanceStatus, Result, User, AuditLog, AuditLogStats, AuditLogFilters, AuditLogListResponse };
+export type {
+	Attachment,
+	AuthResult,
+	Comment,
+	Grievance,
+	GrievanceStatus,
+	ResolutionReview,
+	Result,
+	User,
+	AuditLog,
+	AuditLogStats,
+	AuditLogFilters,
+	AuditLogListResponse
+};
 

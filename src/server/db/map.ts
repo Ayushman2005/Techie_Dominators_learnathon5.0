@@ -8,20 +8,37 @@ import type {
 	PublicAttachment,
 	PublicComment,
 	PublicGrievance,
+	PublicResolutionReview,
+	ResolutionReviewRow,
 	PublicUser,
 	GrievanceRow,
 	UserRow
 } from '../types/index.ts';
 
-export function toPublicUser(row: Pick<UserRow, 'id' | 'name' | 'email' | 'role' | 'room'>): PublicUser {
+export function toPublicUser(
+	row: Pick<UserRow, 'id' | 'name' | 'email' | 'role' | 'room'> & Partial<Pick<UserRow, 'roll_no' | 'emp_id' | 'warden_id'>>,
+	warden?: PublicUser | null
+): PublicUser {
 	const user: PublicUser = {
 		id: row.id,
 		name: row.name,
 		email: row.email,
 		role: row.role
 	};
-	if (row.room) {
+	if (row.room !== undefined && row.room !== null) {
 		user.room = row.room;
+	}
+	if (row.roll_no !== undefined) {
+		user.rollNo = row.roll_no;
+	}
+	if (row.emp_id !== undefined) {
+		user.empId = row.emp_id;
+	}
+	if (row.warden_id !== undefined) {
+		user.wardenId = row.warden_id;
+	}
+	if (warden !== undefined) {
+		user.warden = warden;
 	}
 	return user;
 }
@@ -46,11 +63,30 @@ export function toPublicComment(row: CommentRow, author: PublicUser): PublicComm
 	};
 }
 
+export function toPublicResolutionReview(
+	row: ResolutionReviewRow,
+	student?: PublicUser,
+	solutionAttachment?: PublicAttachment | null
+): PublicResolutionReview {
+	return {
+		id: row.id,
+		grievanceId: row.grievance_id,
+		studentId: row.student_id,
+		student,
+		rating: row.rating,
+		feedback: row.feedback,
+		attachmentId: row.attachment_id,
+		solutionAttachment,
+		createdAt: row.created_at
+	};
+}
+
 export function toPublicGrievance(
 	row: GrievanceRow,
 	student: PublicUser,
 	attachments: PublicAttachment[],
-	comments: PublicComment[]
+	comments: PublicComment[],
+	review?: PublicResolutionReview | null
 ): PublicGrievance {
 	return {
 		id: row.id,
@@ -63,7 +99,8 @@ export function toPublicGrievance(
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		attachments,
-		comments
+		comments,
+		review: review ?? null
 	};
 }
 

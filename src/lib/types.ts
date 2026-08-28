@@ -27,7 +27,15 @@ export interface User {
 	email: string;
 	role: Role;
 	/** For students: hostel room identifier shown to wardens. */
-	room?: string;
+	room?: string | null;
+	/** For students: unique roll number / registration number. */
+	rollNo?: string | null;
+	/** For wardens / admins: unique employee staff ID. */
+	empId?: string | null;
+	/** For students: assigned warden's user ID. */
+	wardenId?: string | null;
+	/** For students: populated assigned warden profile. */
+	warden?: User | null;
 	createdAt?: string;
 }
 
@@ -37,6 +45,9 @@ export interface CreateUserInput {
 	password: string;
 	role: Role;
 	room?: string;
+	rollNo?: string;
+	empId?: string;
+	wardenId?: string;
 }
 
 export interface UpdateUserInput {
@@ -45,6 +56,9 @@ export interface UpdateUserInput {
 	password?: string;
 	role?: Role;
 	room?: string;
+	rollNo?: string;
+	empId?: string;
+	wardenId?: string;
 }
 
 export interface Attachment {
@@ -65,6 +79,18 @@ export interface Comment {
 	createdAt: string; // ISO timestamp
 }
 
+export interface ResolutionReview {
+	id: string;
+	grievanceId: string;
+	studentId: string;
+	student?: User;
+	rating: number;
+	feedback: string;
+	attachmentId?: string | null;
+	solutionAttachment?: Attachment | null;
+	createdAt: string;
+}
+
 export interface Grievance {
 	id: string;
 	title: string;
@@ -78,6 +104,7 @@ export interface Grievance {
 	updatedAt: string; // ISO timestamp
 	attachments: Attachment[];
 	comments: Comment[];
+	review?: ResolutionReview | null;
 }
 
 /** Result of a mock sign-in attempt. */

@@ -14,6 +14,7 @@ import type {
 	AuthService,
 	CommentService,
 	GrievanceService,
+	SubmitReviewInput,
 	UserService,
 	CreateGrievanceInput,
 	UserStats
@@ -25,6 +26,7 @@ import type {
 	CreateUserInput,
 	Grievance,
 	GrievanceStatus,
+	ResolutionReview,
 	Result,
 	Role,
 	UpdateUserInput,
@@ -119,15 +121,29 @@ function findUser(id: string): User | null {
 // Users
 // ---------------------------------------------------------------------------
 
+function enrichUser(u: User): User {
+	const clone = { ...u };
+	if (clone.wardenId && MOCK_USERS[clone.wardenId]) {
+		clone.warden = { ...MOCK_USERS[clone.wardenId] };
+	}
+	return clone;
+}
+
 class MockUserService implements UserService {
 	async list(role?: Role): Promise<Result<User[]>> {
 		let list = Object.values(MOCK_USERS);
 		if (role) list = list.filter((u) => u.role === role);
-		return delay({ ok: true as const, data: list.map((u) => ({ ...u })) });
+		return delay({ ok: true as const, data: list.map(enrichUser) });
+	}
+
+	async listWardens(): Promise<Result<User[]>> {
+		const list = Object.values(MOCK_USERS).filter((u) => u.role === 'warden');
+		return delay({ ok: true as const, data: list.map(enrichUser) });
 	}
 
 	async getById(id: string): Promise<User | null> {
-		return delay(MOCK_USERS[id] ?? null, 80);
+		const u = MOCK_USERS[id];
+		return delay(u ? enrichUser(u) : null, 80);
 	}
 
 	async create(input: CreateUserInput): Promise<Result<User>> {
@@ -138,10 +154,13 @@ class MockUserService implements UserService {
 			email: input.email,
 			role: input.role,
 			room: input.room,
+			rollNo: input.rollNo,
+			empId: input.empId,
+			wardenId: input.wardenId,
 			createdAt: nowIso()
 		};
 		MOCK_USERS[newId] = user;
-		return delay({ ok: true as const, data: { ...user } });
+		return delay({ ok: true as const, data: enrichUser(user) });
 	}
 
 	async update(id: string, input: UpdateUserInput): Promise<Result<User>> {
@@ -151,7 +170,10 @@ class MockUserService implements UserService {
 		if (input.email) user.email = input.email;
 		if (input.role) user.role = input.role;
 		if (input.room !== undefined) user.room = input.room;
-		return delay({ ok: true as const, data: { ...user } });
+		if (input.rollNo !== undefined) user.rollNo = input.rollNo;
+		if (input.empId !== undefined) user.empId = input.empId;
+		if (input.wardenId !== undefined) user.wardenId = input.wardenId;
+		return delay({ ok: true as const, data: enrichUser(user) });
 	}
 
 	async delete(id: string): Promise<Result<void>> {
@@ -247,6 +269,47 @@ class MockGrievanceService implements GrievanceService {
 			grievances.splice(idx, 1);
 		}
 		return delay({ ok: true as const, data: undefined });
+	}
+
+	async submitReview(id: string, input: SubmitReviewInput): Promise<Result<Grievance>> {
+		const g = grievances.find((x) => x.id === id);
+		if (!g) {
+			return delay({ ok: false as const, error: `Grievance ${id} was not found.` });
+		}
+		if (g.status !== 'Resolved') {
+			return delay({ ok: false as const, error: 'Resolution reviews can only be submitted once the grievance is resolved.' });
+		}
+		const attId = `att-sol-${Date.now()}`;
+		const solutionAttachment: Attachment = {
+			id: attId,
+			filename: input.file.name,
+			sizeBytes: input.file.size,
+			contentType: input.file.type || 'image/jpeg'
+		};
+		g.attachments.push(solutionAttachment);
+
+		const review: ResolutionReview = {
+			id: `rev-${Date.now()}`,
+			grievanceId: g.id,
+			studentId: g.studentId,
+			student: g.student,
+			rating: input.rating,
+			feedback: input.feedback,
+			attachmentId: attId,
+			solutionAttachment,
+			createdAt: nowIso()
+		};
+		g.review = review;
+		touch(g);
+		return delay({ ok: true as const, data: clone(g) });
+	}
+
+	async getReview(id: string): Promise<Result<ResolutionReview | null>> {
+		const g = grievances.find((x) => x.id === id);
+		if (!g) {
+			return delay({ ok: false as const, error: `Grievance ${id} was not found.` });
+		}
+		return delay({ ok: true as const, data: g.review ? { ...g.review } : null });
 	}
 }
 

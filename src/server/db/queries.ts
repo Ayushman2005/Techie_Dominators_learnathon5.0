@@ -10,13 +10,16 @@ import type {
 	CommentRow,
 	GrievanceRow,
 	PublicGrievance,
+	PublicResolutionReview,
+	PublicUser,
+	ResolutionReviewRow,
 	Role,
 	SessionUser,
 	UserRow
 } from '../types/index.ts';
 import { DEFAULT_UPLOADS_DIR } from '../config.ts';
 import { deleteStoredFile } from '../storage/attachments.ts';
-import { toPublicAttachment, toPublicComment, toPublicGrievance, toPublicUser } from './map.ts';
+import { toPublicAttachment, toPublicComment, toPublicGrievance, toPublicResolutionReview, toPublicUser } from './map.ts';
 
 export function findUserByEmail(db: Database, email: string): UserRow | undefined {
 	return db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
@@ -24,6 +27,25 @@ export function findUserByEmail(db: Database, email: string): UserRow | undefine
 
 export function findUserById(db: Database, id: string): UserRow | undefined {
 	return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+}
+
+export function findUserByRollNo(db: Database, rollNo: string): UserRow | undefined {
+	return db.prepare('SELECT * FROM users WHERE roll_no = ?').get(rollNo) as UserRow | undefined;
+}
+
+export function findUserByEmpId(db: Database, empId: string): UserRow | undefined {
+	return db.prepare('SELECT * FROM users WHERE emp_id = ?').get(empId) as UserRow | undefined;
+}
+
+export function assembleUser(db: Database, row: UserRow): PublicUser {
+	let warden: PublicUser | null = null;
+	if (row.warden_id) {
+		const wardenRow = findUserById(db, row.warden_id);
+		if (wardenRow) {
+			warden = toPublicUser(wardenRow);
+		}
+	}
+	return toPublicUser(row, warden);
 }
 
 export function userCount(db: Database): number {
@@ -39,6 +61,17 @@ export function listGrievanceRowsForStudent(db: Database, studentId: string): Gr
 	return db
 		.prepare('SELECT * FROM grievances WHERE student_id = ? ORDER BY created_at DESC')
 		.all(studentId) as GrievanceRow[];
+}
+
+export function listGrievanceRowsForWarden(db: Database, wardenId: string): GrievanceRow[] {
+	return db
+		.prepare(
+			`SELECT g.* FROM grievances g
+       JOIN users u ON g.student_id = u.id
+       WHERE u.warden_id = ?
+       ORDER BY g.created_at DESC`
+		)
+		.all(wardenId) as GrievanceRow[];
 }
 
 export function listAllGrievanceRows(db: Database): GrievanceRow[] {
@@ -61,21 +94,38 @@ export function findAttachmentRow(db: Database, id: string): AttachmentRow | und
 	return db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow | undefined;
 }
 
+export function findResolutionReviewRow(db: Database, grievanceId: string): ResolutionReviewRow | undefined {
+	return db.prepare('SELECT * FROM resolution_reviews WHERE grievance_id = ?').get(grievanceId) as ResolutionReviewRow | undefined;
+}
+
 export function assembleGrievance(db: Database, row: GrievanceRow): PublicGrievance {
 	const studentRow = findUserById(db, row.student_id);
 	if (!studentRow) {
 		throw new HttpError(500, 'internal', 'Internal server error.');
 	}
-	const student = toPublicUser(studentRow);
+	const student = assembleUser(db, studentRow);
 	const attachments = listAttachmentRows(db, row.id).map(toPublicAttachment);
 	const comments = listCommentRows(db, row.id).map((comment) => {
 		const authorRow = findUserById(db, comment.author_id);
 		if (!authorRow) {
 			throw new HttpError(500, 'internal', 'Internal server error.');
 		}
-		return toPublicComment(comment, toPublicUser(authorRow));
+		return toPublicComment(comment, assembleUser(db, authorRow));
 	});
-	return toPublicGrievance(row, student, attachments, comments);
+
+	const reviewRow = findResolutionReviewRow(db, row.id);
+	let review: PublicResolutionReview | null = null;
+	if (reviewRow) {
+		const revStudent = findUserById(db, reviewRow.student_id);
+		const solutionAtt = reviewRow.attachment_id ? findAttachmentRow(db, reviewRow.attachment_id) : undefined;
+		review = toPublicResolutionReview(
+			reviewRow,
+			revStudent ? assembleUser(db, revStudent) : undefined,
+			solutionAtt ? toPublicAttachment(solutionAtt) : null
+		);
+	}
+
+	return toPublicGrievance(row, student, attachments, comments, review);
 }
 
 export function requireGrievance(db: Database, id: string): GrievanceRow {
@@ -86,11 +136,20 @@ export function requireGrievance(db: Database, id: string): GrievanceRow {
 	return row;
 }
 
-export function listUsers(db: Database, role?: Role): UserRow[] {
+export function listUsers(db: Database, role?: Role, wardenId?: string): UserRow[] {
+	if (role === 'student' && wardenId) {
+		return db
+			.prepare('SELECT * FROM users WHERE role = ? AND warden_id = ? ORDER BY created_at DESC')
+			.all(role, wardenId) as UserRow[];
+	}
 	if (role) {
 		return db.prepare('SELECT * FROM users WHERE role = ? ORDER BY created_at DESC').all(role) as UserRow[];
 	}
 	return db.prepare('SELECT * FROM users ORDER BY created_at DESC').all() as UserRow[];
+}
+
+export function listWardens(db: Database): UserRow[] {
+	return db.prepare("SELECT * FROM users WHERE role = 'warden' ORDER BY name ASC").all() as UserRow[];
 }
 
 export function countUsersByRole(db: Database): { student: number; warden: number; admin: number; total: number } {
@@ -112,19 +171,50 @@ export function countUsersByRole(db: Database): { student: number; warden: numbe
 
 export function createUser(
 	db: Database,
-	user: { id: string; name: string; email: string; password_hash: string; role: Role; room: string | null; created_at: string }
+	user: {
+		id: string;
+		name: string;
+		email: string;
+		password_hash: string;
+		role: Role;
+		room: string | null;
+		roll_no?: string | null;
+		emp_id?: string | null;
+		warden_id?: string | null;
+		created_at: string;
+	}
 ): UserRow {
 	db.prepare(
-		`INSERT INTO users (id, name, email, password_hash, role, room, created_at)
-     VALUES (@id, @name, @email, @password_hash, @role, @room, @created_at)`
-	).run(user);
+		`INSERT INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, warden_id, created_at)
+     VALUES (@id, @name, @email, @password_hash, @role, @room, @roll_no, @emp_id, @warden_id, @created_at)`
+	).run({
+		id: user.id,
+		name: user.name,
+		email: user.email,
+		password_hash: user.password_hash,
+		role: user.role,
+		room: user.room ?? null,
+		roll_no: user.roll_no ?? null,
+		emp_id: user.emp_id ?? null,
+		warden_id: user.warden_id ?? null,
+		created_at: user.created_at
+	});
 	return findUserById(db, user.id)!;
 }
 
 export function updateUser(
 	db: Database,
 	id: string,
-	updates: { name?: string; email?: string; password_hash?: string; role?: Role; room?: string | null }
+	updates: {
+		name?: string;
+		email?: string;
+		password_hash?: string;
+		role?: Role;
+		room?: string | null;
+		roll_no?: string | null;
+		emp_id?: string | null;
+		warden_id?: string | null;
+	}
 ): UserRow {
 	const user = findUserById(db, id);
 	if (!user) {
@@ -135,10 +225,13 @@ export function updateUser(
 	const nextPasswordHash = updates.password_hash !== undefined ? updates.password_hash : user.password_hash;
 	const nextRole = updates.role !== undefined ? updates.role : user.role;
 	const nextRoom = updates.room !== undefined ? updates.room : user.room;
+	const nextRollNo = updates.roll_no !== undefined ? updates.roll_no : user.roll_no;
+	const nextEmpId = updates.emp_id !== undefined ? updates.emp_id : user.emp_id;
+	const nextWardenId = updates.warden_id !== undefined ? updates.warden_id : user.warden_id;
 
 	db.prepare(
-		'UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, room = ? WHERE id = ?'
-	).run(nextName, nextEmail, nextPasswordHash, nextRole, nextRoom, id);
+		'UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, room = ?, roll_no = ?, emp_id = ?, warden_id = ? WHERE id = ?'
+	).run(nextName, nextEmail, nextPasswordHash, nextRole, nextRoom, nextRollNo, nextEmpId, nextWardenId, id);
 
 	return findUserById(db, id)!;
 }
@@ -227,6 +320,39 @@ export function nextAttachmentId(db: Database): string {
 		if (n > max) max = n;
 	}
 	return `att-${max + 1}`;
+}
+
+export function nextResolutionReviewId(db: Database): string {
+	const rows = db.prepare('SELECT id FROM resolution_reviews').all() as { id: string }[];
+	let max = 0;
+	for (const row of rows) {
+		const match = /^rev-(\d+)$/.exec(row.id);
+		if (!match) continue;
+		const n = Number.parseInt(match[1], 10);
+		if (n > max) max = n;
+	}
+	return `rev-${max + 1}`;
+}
+
+export function insertResolutionReview(
+	db: Database,
+	input: {
+		id?: string;
+		grievanceId: string;
+		studentId: string;
+		rating: number;
+		feedback: string;
+		attachmentId?: string | null;
+		createdAt?: string;
+	}
+): ResolutionReviewRow {
+	const id = input.id ?? nextResolutionReviewId(db);
+	const createdAt = input.createdAt ?? new Date().toISOString();
+	db.prepare(
+		`INSERT INTO resolution_reviews (id, grievance_id, student_id, rating, feedback, attachment_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+	).run(id, input.grievanceId, input.studentId, input.rating, input.feedback, input.attachmentId ?? null, createdAt);
+	return db.prepare('SELECT * FROM resolution_reviews WHERE id = ?').get(id) as ResolutionReviewRow;
 }
 
 export function touchGrievance(db: Database, id: string, updatedAt: string): void {

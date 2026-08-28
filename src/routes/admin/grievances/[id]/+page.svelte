@@ -13,6 +13,7 @@
 	import CommentTimeline from '$lib/components/app/comment-timeline.svelte';
 	import CommentForm from '$lib/components/app/comment-form.svelte';
 	import AttachmentCard from '$lib/components/app/attachment-card.svelte';
+	import ResolutionReviewCard from '$lib/components/app/resolution-review-card.svelte';
 	import { commentService, grievanceService } from '$lib/services';
 	import { getSession } from '$lib/stores/auth.svelte';
 	import { GRIEVANCE_STATUSES, type Grievance, type GrievanceStatus } from '$lib/types';
@@ -168,6 +169,15 @@
 				</Card>
 			{/if}
 
+			<!-- Resolution Review & Solution Photo Verification -->
+			{#if grievance.status === 'Resolved' || grievance.review}
+				<ResolutionReviewCard
+					{grievance}
+					isOwner={false}
+					onReviewSubmitted={(updated) => (grievance = updated)}
+				/>
+			{/if}
+
 			<!-- Comments Timeline & Form -->
 			<Card>
 				<CardHeader>
@@ -234,12 +244,23 @@
 					<div>
 						<span class="text-muted-foreground block text-[11px]">Student</span>
 						<span class="font-medium">{grievance.student.name}</span>
-						<span class="text-muted-foreground block">{grievance.student.email}</span>
+						<span class="text-muted-foreground block font-mono text-[11px]">
+							{grievance.student.rollNo ? `Roll: ${grievance.student.rollNo} · ` : ''}{grievance.student.email}
+						</span>
 					</div>
 					<div>
 						<span class="text-muted-foreground block text-[11px]">Hostel Room</span>
-						<span class="font-medium">{grievance.student.room ?? 'Not specified'}</span>
+						<span class="font-medium font-mono">{grievance.student.room ?? 'Not specified'}</span>
 					</div>
+					{#if grievance.student.warden}
+						<div>
+							<span class="text-muted-foreground block text-[11px]">Assigned Warden</span>
+							<span class="font-medium">{grievance.student.warden.name}</span>
+							{#if grievance.student.warden.empId}
+								<span class="text-muted-foreground block font-mono text-[11px]">({grievance.student.warden.empId})</span>
+							{/if}
+						</div>
+					{/if}
 					<div>
 						<span class="text-muted-foreground block text-[11px]">Date Created</span>
 						<span>{formatDate(grievance.createdAt)}</span>

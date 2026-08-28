@@ -3,12 +3,16 @@ import type { AppEnv } from '../env.ts';
 import { requireAdmin, requireUser } from '../auth/session.ts';
 import { hashPassword } from '../auth/passwords.ts';
 import {
+	assembleUser,
 	countUsersByRole,
 	createUser,
 	deleteUser,
 	findUserByEmail,
+	findUserByEmpId,
 	findUserById,
+	findUserByRollNo,
 	listUsers,
+	listWardens,
 	nextUserId,
 	updateUser
 } from '../db/queries.ts';
@@ -37,11 +41,26 @@ userRoutes.get('/stats', (c) => {
 });
 
 /**
+ * GET /api/users/wardens
+ *
+ * Helper to fetch all active wardens for dropdown selection when creating/editing students.
+ */
+userRoutes.get('/wardens', (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+	if (user.role === 'student') {
+		throw new HttpError(403, 'unauthorized', 'Students cannot access this resource.');
+	}
+	const wardens = listWardens(db);
+	return c.json({ data: wardens.map((w) => assembleUser(db, w)) });
+});
+
+/**
  * GET /api/users
  *
  * List users with strict RBAC:
  * - Admin: Can list all users, or filter by role (?role=student|warden|admin)
- * - Warden: Can ONLY list students (forced role=student)
+ * - Warden: Can ONLY list students assigned to that warden
  * - Student: 403 Forbidden
  */
 userRoutes.get('/', (c) => {
@@ -61,15 +80,15 @@ userRoutes.get('/', (c) => {
 
 	let users;
 	if (user.role === 'warden') {
-		// Wardens are strictly restricted to student accounts only
-		users = listUsers(db, 'student');
+		// Wardens are strictly restricted to students assigned directly to them
+		users = listUsers(db, 'student', user.id);
 	} else {
 		// Admins can query any role or all
 		users = listUsers(db, roleParam);
 	}
 
 	return c.json({
-		data: users.map(toPublicUser)
+		data: users.map((u) => assembleUser(db, u))
 	});
 });
 
@@ -78,7 +97,7 @@ userRoutes.get('/', (c) => {
  *
  * Create a new user account:
  * - Admin: Can create student, warden, or admin accounts.
- * - Warden: Can ONLY create student accounts.
+ * - Warden: Can ONLY create student accounts (automatically assigned to themselves).
  * - Student: 403 Forbidden.
  */
 userRoutes.post('/', async (c) => {
@@ -111,6 +130,9 @@ userRoutes.post('/', async (c) => {
 	const password = typeof raw.password === 'string' ? raw.password : '';
 	const role = raw.role as Role;
 	const room = typeof raw.room === 'string' && raw.room.trim() ? raw.room.trim() : null;
+	const rollNo = typeof raw.rollNo === 'string' && raw.rollNo.trim() ? raw.rollNo.trim() : typeof raw.roll_no === 'string' && raw.roll_no.trim() ? raw.roll_no.trim() : null;
+	const empId = typeof raw.empId === 'string' && raw.empId.trim() ? raw.empId.trim() : typeof raw.emp_id === 'string' && raw.emp_id.trim() ? raw.emp_id.trim() : null;
+	let wardenId = typeof raw.wardenId === 'string' && raw.wardenId.trim() ? raw.wardenId.trim() : typeof raw.warden_id === 'string' && raw.warden_id.trim() ? raw.warden_id.trim() : null;
 
 	if (!name || name.length > 100) {
 		throw new HttpError(400, 'bad_request', 'Name is required (max 100 characters).');
@@ -126,19 +148,58 @@ userRoutes.post('/', async (c) => {
 	}
 
 	// RBAC hierarchy enforcement
-	if (user.role === 'warden' && role !== 'student') {
-		securityLog('authorization_failure', {
-			userId: user.id,
-			role: user.role,
-			reason: 'warden_cannot_create_non_student'
-		});
-		throw new HttpError(403, 'unauthorized', 'Wardens can only create student accounts.');
+	if (user.role === 'warden') {
+		if (role !== 'student') {
+			securityLog('authorization_failure', {
+				userId: user.id,
+				role: user.role,
+				reason: 'warden_cannot_create_non_student'
+			});
+			throw new HttpError(403, 'unauthorized', 'Wardens can only create student accounts.');
+		}
+		// When a warden creates a student, that student is automatically assigned to this warden
+		wardenId = user.id;
 	}
 
 	// Duplicate email check
-	const existing = findUserByEmail(db, email);
-	if (existing) {
+	const existingEmail = findUserByEmail(db, email);
+	if (existingEmail) {
 		throw new HttpError(409, 'conflict', 'An account with this email already exists.');
+	}
+
+	// Student specific validations
+	if (role === 'student') {
+		if (!rollNo) {
+			throw new HttpError(400, 'bad_request', 'Roll number is required for students.');
+		}
+		const existingRoll = findUserByRollNo(db, rollNo);
+		if (existingRoll) {
+			throw new HttpError(409, 'conflict', `A student with roll number '${rollNo}' already exists.`);
+		}
+		if (wardenId) {
+			const wardenUser = findUserById(db, wardenId);
+			if (!wardenUser || wardenUser.role !== 'warden') {
+				throw new HttpError(400, 'bad_request', 'Assigned warden must be a valid warden user account.');
+			}
+		}
+	}
+
+	// Warden specific validations
+	if (role === 'warden') {
+		if (!empId) {
+			throw new HttpError(400, 'bad_request', 'Employee ID is required for wardens.');
+		}
+		const existingEmp = findUserByEmpId(db, empId);
+		if (existingEmp) {
+			throw new HttpError(409, 'conflict', `A staff member with employee ID '${empId}' already exists.`);
+		}
+	}
+
+	if (role === 'admin' && empId) {
+		const existingEmp = findUserByEmpId(db, empId);
+		if (existingEmp) {
+			throw new HttpError(409, 'conflict', `A staff member with employee ID '${empId}' already exists.`);
+		}
 	}
 
 	const password_hash = hashPassword(password);
@@ -152,12 +213,15 @@ userRoutes.post('/', async (c) => {
 		password_hash,
 		role,
 		room: role === 'student' ? room : null,
+		roll_no: role === 'student' ? rollNo : null,
+		emp_id: role === 'warden' || role === 'admin' ? empId : null,
+		warden_id: role === 'student' ? wardenId : null,
 		created_at
 	});
 
 	recordAuditLog(c, db, {
 		eventType: 'user.created',
-		action: user.role === 'warden' ? `Warden registered student: ${name}` : `Admin created ${role} account: ${name}`,
+		action: user.role === 'warden' ? `Warden registered student: ${name} (Roll: ${rollNo})` : `Admin created ${role} account: ${name}`,
 		actorId: user.id,
 		actorName: user.name,
 		actorEmail: user.email,
@@ -168,12 +232,15 @@ userRoutes.post('/', async (c) => {
 			name: newUser.name,
 			email: newUser.email,
 			role: newUser.role,
-			room: newUser.room
+			room: newUser.room,
+			rollNo: newUser.roll_no,
+			empId: newUser.emp_id,
+			wardenId: newUser.warden_id
 		},
 		status: 'success'
 	});
 
-	return c.json({ data: toPublicUser(newUser) }, 201);
+	return c.json({ data: assembleUser(db, newUser) }, 201);
 });
 
 /**
@@ -181,7 +248,7 @@ userRoutes.post('/', async (c) => {
  *
  * Update an existing user:
  * - Admin: Can modify any user.
- * - Warden: Can ONLY modify students (cannot modify wardens or admins, cannot promote student).
+ * - Warden: Can ONLY modify students assigned to that warden.
  * - Student: 403 Forbidden.
  */
 userRoutes.patch('/:id', async (c) => {
@@ -231,6 +298,22 @@ userRoutes.patch('/:id', async (c) => {
 		throw new HttpError(403, 'unauthorized', 'Wardens cannot modify warden accounts.');
 	}
 
+	if (user.role === 'warden' && targetUser.role === 'student' && targetUser.warden_id !== user.id) {
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Warden attempted to modify a student assigned to another warden',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: targetUser.id,
+			targetType: 'user',
+			details: { reason: 'warden_mismatch' },
+			status: 'warning'
+		});
+		throw new HttpError(403, 'unauthorized', 'You can only modify students assigned to you.');
+	}
+
 	let body: unknown;
 	try {
 		body = await c.req.json();
@@ -249,6 +332,9 @@ userRoutes.patch('/:id', async (c) => {
 		password_hash?: string;
 		role?: Role;
 		room?: string | null;
+		roll_no?: string | null;
+		emp_id?: string | null;
+		warden_id?: string | null;
 	} = {};
 
 	if ('name' in raw && typeof raw.name === 'string') {
@@ -295,6 +381,42 @@ userRoutes.patch('/:id', async (c) => {
 		updates.room = typeof raw.room === 'string' && raw.room.trim() ? raw.room.trim() : null;
 	}
 
+	if ('rollNo' in raw || 'roll_no' in raw) {
+		const rVal = typeof raw.rollNo === 'string' ? raw.rollNo.trim() : typeof raw.roll_no === 'string' ? raw.roll_no.trim() : null;
+		if (rVal && rVal !== targetUser.roll_no) {
+			const existing = findUserByRollNo(db, rVal);
+			if (existing && existing.id !== targetId) {
+				throw new HttpError(409, 'conflict', `A student with roll number '${rVal}' already exists.`);
+			}
+		}
+		updates.roll_no = rVal;
+	}
+
+	if ('empId' in raw || 'emp_id' in raw) {
+		const eVal = typeof raw.empId === 'string' ? raw.empId.trim() : typeof raw.emp_id === 'string' ? raw.emp_id.trim() : null;
+		if (eVal && eVal !== targetUser.emp_id) {
+			const existing = findUserByEmpId(db, eVal);
+			if (existing && existing.id !== targetId) {
+				throw new HttpError(409, 'conflict', `A staff member with employee ID '${eVal}' already exists.`);
+			}
+		}
+		updates.emp_id = eVal;
+	}
+
+	if ('wardenId' in raw || 'warden_id' in raw) {
+		if (user.role !== 'admin') {
+			throw new HttpError(403, 'unauthorized', 'Only administrators can reassign student wardens.');
+		}
+		const wVal = typeof raw.wardenId === 'string' ? raw.wardenId.trim() : typeof raw.warden_id === 'string' ? raw.warden_id.trim() : null;
+		if (wVal) {
+			const wUser = findUserById(db, wVal);
+			if (!wUser || wUser.role !== 'warden') {
+				throw new HttpError(400, 'bad_request', 'Assigned warden must be a valid warden user account.');
+			}
+		}
+		updates.warden_id = wVal;
+	}
+
 	const updated = updateUser(db, targetId, updates);
 
 	recordAuditLog(c, db, {
@@ -315,7 +437,7 @@ userRoutes.patch('/:id', async (c) => {
 		status: 'success'
 	});
 
-	return c.json({ data: toPublicUser(updated) });
+	return c.json({ data: assembleUser(db, updated) });
 });
 
 /**

@@ -23,36 +23,21 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 	const adminHash = hashPassword('admin123');
 
 	const insertUser = db.prepare(
-		`INSERT INTO users (id, name, email, password_hash, role, room, created_at)
-     VALUES (@id, @name, @email, @password_hash, @role, @room, @created_at)`
+		`INSERT INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, warden_id, created_at)
+     VALUES (@id, @name, @email, @password_hash, @role, @room, @roll_no, @emp_id, @warden_id, @created_at)`
 	);
 
 	const users = [
 		{
-			id: 'stu-1',
-			name: 'Aarav Mehta',
-			email: 'student@example.test',
-			password_hash: studentHash,
-			role: 'student',
-			room: 'B-204',
-			created_at: '2026-08-01T08:00:00.000Z'
-		},
-		{
-			id: 'stu-2',
-			name: 'Priya Nair',
-			email: 'priya@example.test',
-			password_hash: studentHash,
-			role: 'student',
-			room: 'A-112',
-			created_at: '2026-08-01T08:00:00.000Z'
-		},
-		{
-			id: 'stu-3',
-			name: 'Rohan Das',
-			email: 'rohan@example.test',
-			password_hash: studentHash,
-			role: 'student',
-			room: 'C-008',
+			id: 'adm-1',
+			name: 'Dr. S. K. Panda (Admin)',
+			email: 'admin@example.test',
+			password_hash: adminHash,
+			role: 'admin',
+			room: null,
+			roll_no: null,
+			emp_id: 'ADM-0001',
+			warden_id: null,
 			created_at: '2026-08-01T08:00:00.000Z'
 		},
 		{
@@ -62,15 +47,57 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 			password_hash: wardenHash,
 			role: 'warden',
 			room: null,
+			roll_no: null,
+			emp_id: 'EMP-1001',
+			warden_id: null,
 			created_at: '2026-08-01T08:00:00.000Z'
 		},
 		{
-			id: 'adm-1',
-			name: 'Dr. S. K. Panda (Admin)',
-			email: 'admin@example.test',
-			password_hash: adminHash,
-			role: 'admin',
+			id: 'war-2',
+			name: 'Mr. R. K. Mishra',
+			email: 'warden2@example.test',
+			password_hash: wardenHash,
+			role: 'warden',
 			room: null,
+			roll_no: null,
+			emp_id: 'EMP-1002',
+			warden_id: null,
+			created_at: '2026-08-01T08:00:00.000Z'
+		},
+		{
+			id: 'stu-1',
+			name: 'Aarav Mehta',
+			email: 'student@example.test',
+			password_hash: studentHash,
+			role: 'student',
+			room: 'B-204',
+			roll_no: '21BCE1042',
+			emp_id: null,
+			warden_id: 'war-1',
+			created_at: '2026-08-01T08:00:00.000Z'
+		},
+		{
+			id: 'stu-2',
+			name: 'Priya Nair',
+			email: 'priya@example.test',
+			password_hash: studentHash,
+			role: 'student',
+			room: 'A-112',
+			roll_no: '21BCE1088',
+			emp_id: null,
+			warden_id: 'war-1',
+			created_at: '2026-08-01T08:00:00.000Z'
+		},
+		{
+			id: 'stu-3',
+			name: 'Rohan Das',
+			email: 'rohan@example.test',
+			password_hash: studentHash,
+			role: 'student',
+			room: 'C-008',
+			roll_no: '22BCS2015',
+			emp_id: null,
+			warden_id: 'war-2',
 			created_at: '2026-08-01T08:00:00.000Z'
 		}
 	];

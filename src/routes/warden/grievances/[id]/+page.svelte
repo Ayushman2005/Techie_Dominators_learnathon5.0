@@ -12,6 +12,7 @@
 	import CommentTimeline from '$lib/components/app/comment-timeline.svelte';
 	import CommentForm from '$lib/components/app/comment-form.svelte';
 	import AttachmentCard from '$lib/components/app/attachment-card.svelte';
+	import ResolutionReviewCard from '$lib/components/app/resolution-review-card.svelte';
 	import { commentService, grievanceService } from '$lib/services';
 	import { getSession } from '$lib/stores/auth.svelte';
 	import { GRIEVANCE_STATUSES, type Grievance, type GrievanceStatus } from '$lib/types';
@@ -121,8 +122,10 @@
 						<div>
 							<dt class="text-muted-foreground text-xs">Student</dt>
 							<dd>
-								{g.student.name}
-								<span class="text-muted-foreground block text-xs">{g.student.room ?? '—'}</span>
+								<div class="font-medium text-foreground">{g.student.name}</div>
+								<div class="text-muted-foreground text-xs font-mono">
+									{g.student.rollNo ? `Roll: ${g.student.rollNo} · ` : ''}{g.student.room ? `Room ${g.student.room}` : '—'}
+								</div>
 							</dd>
 						</div>
 						<div>
@@ -155,6 +158,15 @@
 					{/if}
 				</CardContent>
 			</Card>
+
+			<!-- Resolution Review & Solution Photo Verification -->
+			{#if g.status === 'Resolved' || g.review}
+				<ResolutionReviewCard
+					grievance={g}
+					isOwner={false}
+					onReviewSubmitted={(updated) => (grievance = updated)}
+				/>
+			{/if}
 
 			<Card>
 				<CardHeader>

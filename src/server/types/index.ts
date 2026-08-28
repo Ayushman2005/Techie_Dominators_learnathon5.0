@@ -20,6 +20,10 @@ export interface PublicUser {
 	email: string;
 	role: Role;
 	room?: string;
+	rollNo?: string | null;
+	empId?: string | null;
+	wardenId?: string | null;
+	warden?: PublicUser | null;
 }
 
 export interface PublicAttachment {
@@ -38,6 +42,18 @@ export interface PublicComment {
 	createdAt: string;
 }
 
+export interface PublicResolutionReview {
+	id: string;
+	grievanceId: string;
+	studentId: string;
+	student?: PublicUser;
+	rating: number;
+	feedback: string;
+	attachmentId?: string | null;
+	solutionAttachment?: PublicAttachment | null;
+	createdAt: string;
+}
+
 export interface PublicGrievance {
 	id: string;
 	title: string;
@@ -50,6 +66,17 @@ export interface PublicGrievance {
 	updatedAt: string;
 	attachments: PublicAttachment[];
 	comments: PublicComment[];
+	review?: PublicResolutionReview | null;
+}
+
+export interface ResolutionReviewRow {
+	id: string;
+	grievance_id: string;
+	student_id: string;
+	rating: number;
+	feedback: string;
+	attachment_id: string | null;
+	created_at: string;
 }
 
 export interface UserRow {
@@ -59,6 +86,9 @@ export interface UserRow {
 	password_hash: string;
 	role: Role;
 	room: string | null;
+	roll_no: string | null;
+	emp_id: string | null;
+	warden_id: string | null;
 	created_at: string;
 }
 

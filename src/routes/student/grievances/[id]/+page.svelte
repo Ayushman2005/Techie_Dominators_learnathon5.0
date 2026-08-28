@@ -10,6 +10,7 @@
 	import CommentTimeline from '$lib/components/app/comment-timeline.svelte';
 	import CommentForm from '$lib/components/app/comment-form.svelte';
 	import AttachmentCard from '$lib/components/app/attachment-card.svelte';
+	import ResolutionReviewCard from '$lib/components/app/resolution-review-card.svelte';
 	import { commentService, grievanceService } from '$lib/services';
 	import { getSession } from '$lib/stores/auth.svelte';
 	import type { Grievance } from '$lib/types';
@@ -111,6 +112,20 @@
 							<dd>{grievance.category}</dd>
 						</div>
 						<div>
+							<dt class="text-muted-foreground text-xs">Student Roll No</dt>
+							<dd class="font-mono text-xs">{grievance.student.rollNo ?? '—'}</dd>
+						</div>
+						<div>
+							<dt class="text-muted-foreground text-xs">Hostel Room</dt>
+							<dd class="font-mono text-xs">{grievance.student.room ?? '—'}</dd>
+						</div>
+						{#if grievance.student.warden}
+							<div>
+								<dt class="text-muted-foreground text-xs">Assigned Warden</dt>
+								<dd class="text-xs font-medium">{grievance.student.warden.name} {grievance.student.warden.empId ? `(${grievance.student.warden.empId})` : ''}</dd>
+							</div>
+						{/if}
+						<div>
 							<dt class="text-muted-foreground text-xs">Filed on</dt>
 							<dd>{formatDate(grievance.createdAt)}</dd>
 						</div>
@@ -136,6 +151,15 @@
 					{/if}
 				</CardContent>
 			</Card>
+
+			<!-- Resolution Review & Solution Photo Verification -->
+			{#if grievance.status === 'Resolved' || grievance.review}
+				<ResolutionReviewCard
+					{grievance}
+					isOwner={true}
+					onReviewSubmitted={(updated) => (grievance = updated)}
+				/>
+			{/if}
 
 			<Card>
 				<CardHeader>

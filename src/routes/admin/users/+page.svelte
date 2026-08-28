@@ -12,7 +12,6 @@
 		TableRow
 	} from '$lib/components/ui/table/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import * as Select from '$lib/components/ui/select/index.js';
 	import PageHeader from '$lib/components/app/page-header.svelte';
 	import EmptyState from '$lib/components/app/empty-state.svelte';
 	import ErrorState from '$lib/components/app/error-state.svelte';
@@ -28,10 +27,12 @@
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import UserIcon from '@lucide/svelte/icons/user';
 	import SchoolIcon from '@lucide/svelte/icons/school';
+	import UserCheckIcon from '@lucide/svelte/icons/user-check';
 
 	const currentUser = $derived(getSession());
 
 	let users = $state<User[]>([]);
+	let wardens = $state<User[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -52,6 +53,9 @@
 	let addPassword = $state('');
 	let addRole = $state<Role>('student');
 	let addRoom = $state('');
+	let addRollNo = $state('');
+	let addEmpId = $state('');
+	let addWardenId = $state('');
 
 	// Edit Form fields
 	let editName = $state('');
@@ -59,6 +63,9 @@
 	let editPassword = $state('');
 	let editRole = $state<Role>('student');
 	let editRoom = $state('');
+	let editRollNo = $state('');
+	let editEmpId = $state('');
+	let editWardenId = $state('');
 
 	const filteredUsers = $derived(
 		users.filter((u) => {
@@ -69,7 +76,10 @@
 				const matchEmail = u.email.toLowerCase().includes(q);
 				const matchRoom = u.room?.toLowerCase().includes(q);
 				const matchId = u.id.toLowerCase().includes(q);
-				return matchName || matchEmail || matchRoom || matchId;
+				const matchRoll = u.rollNo?.toLowerCase().includes(q);
+				const matchEmp = u.empId?.toLowerCase().includes(q);
+				const matchWarden = u.warden?.name.toLowerCase().includes(q);
+				return matchName || matchEmail || matchRoom || matchId || matchRoll || matchEmp || matchWarden;
 			}
 			return true;
 		})
@@ -80,15 +90,24 @@
 		return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 	}
 
-	async function loadUsers() {
+	async function loadData() {
 		loading = true;
 		error = null;
-		const result = await userService.list();
-		if (result.ok) {
-			users = result.data;
+		const [usersRes, wardensRes] = await Promise.all([
+			userService.list(),
+			userService.listWardens()
+		]);
+
+		if (usersRes.ok) {
+			users = usersRes.data;
 		} else {
-			error = result.error;
+			error = usersRes.error;
 		}
+
+		if (wardensRes.ok) {
+			wardens = wardensRes.data;
+		}
+
 		loading = false;
 	}
 
@@ -98,6 +117,9 @@
 		addPassword = '';
 		addRole = 'student';
 		addRoom = '';
+		addRollNo = '';
+		addEmpId = '';
+		addWardenId = wardens.length > 0 ? wardens[0].id : '';
 		addDialogOpen = true;
 	}
 
@@ -108,13 +130,26 @@
 			return;
 		}
 
+		if (addRole === 'student' && !addRollNo.trim()) {
+			toast.error('Roll Number is mandatory for students.');
+			return;
+		}
+
+		if (addRole === 'warden' && !addEmpId.trim()) {
+			toast.error('Employee ID is mandatory for wardens.');
+			return;
+		}
+
 		formSubmitting = true;
 		const payload: CreateUserInput = {
 			name: addName.trim(),
 			email: addEmail.trim(),
 			password: addPassword,
 			role: addRole,
-			room: addRole === 'student' ? addRoom.trim() : undefined
+			room: addRole === 'student' ? addRoom.trim() || undefined : undefined,
+			rollNo: addRole === 'student' ? addRollNo.trim() || undefined : undefined,
+			empId: addRole === 'warden' || addRole === 'admin' ? addEmpId.trim() || undefined : undefined,
+			wardenId: addRole === 'student' ? addWardenId.trim() || undefined : undefined
 		};
 
 		const result = await userService.create(payload);
@@ -123,7 +158,7 @@
 		if (result.ok) {
 			toast.success(`User ${result.data.name} (${result.data.role}) created successfully.`);
 			addDialogOpen = false;
-			await loadUsers();
+			await loadData();
 		} else {
 			toast.error('Could not create user.', { description: result.error });
 		}
@@ -136,6 +171,9 @@
 		editPassword = '';
 		editRole = u.role;
 		editRoom = u.room ?? '';
+		editRollNo = u.rollNo ?? '';
+		editEmpId = u.empId ?? '';
+		editWardenId = u.wardenId ?? (wardens.length > 0 ? wardens[0].id : '');
 		editDialogOpen = true;
 	}
 
@@ -147,12 +185,25 @@
 			return;
 		}
 
+		if (editRole === 'student' && !editRollNo.trim()) {
+			toast.error('Roll Number is mandatory for students.');
+			return;
+		}
+
+		if (editRole === 'warden' && !editEmpId.trim()) {
+			toast.error('Employee ID is mandatory for wardens.');
+			return;
+		}
+
 		formSubmitting = true;
 		const payload: UpdateUserInput = {
 			name: editName.trim(),
 			email: editEmail.trim(),
 			role: editRole,
-			room: editRole === 'student' ? editRoom.trim() : undefined
+			room: editRole === 'student' ? editRoom.trim() || undefined : undefined,
+			rollNo: editRole === 'student' ? editRollNo.trim() || undefined : undefined,
+			empId: editRole === 'warden' || editRole === 'admin' ? editEmpId.trim() || undefined : undefined,
+			wardenId: editRole === 'student' ? editWardenId.trim() || undefined : undefined
 		};
 		if (editPassword.trim()) {
 			payload.password = editPassword.trim();
@@ -164,7 +215,7 @@
 		if (result.ok) {
 			toast.success(`User ${result.data.name} updated successfully.`);
 			editDialogOpen = false;
-			await loadUsers();
+			await loadData();
 		} else {
 			toast.error('Could not update user.', { description: result.error });
 		}
@@ -189,23 +240,23 @@
 		if (result.ok) {
 			toast.success(`User ${selectedUser.name} deleted.`);
 			deleteDialogOpen = false;
-			await loadUsers();
+			await loadData();
 		} else {
 			toast.error('Could not delete user.', { description: result.error });
 		}
 	}
 
-	loadUsers();
+	loadData();
 </script>
 
-<svelte:head><title>User Management · HostelGrievance Admin</title></svelte:head>
+<svelte:head><title>User Directory & Management · Admin Panel</title></svelte:head>
 
 <PageHeader
-	title="User Management"
-	description="Add, edit, or remove student, warden, and administrator accounts."
+	title="User Directory & Management"
+	description="Comprehensive registry of students with Roll No., wardens with Employee ID, and 1-to-1 warden assignments."
 >
 	{#snippet actions()}
-		<Button onclick={openAddDialog} class="gap-1.5">
+		<Button onclick={openAddDialog} class="gap-1.5 bg-foreground text-background hover:bg-foreground/90">
 			<UserPlusIcon class="size-4" />
 			Add User
 		</Button>
@@ -218,7 +269,7 @@
 		<Button
 			variant={activeTab === 'all' ? 'secondary' : 'ghost'}
 			size="sm"
-			class="text-xs h-7 px-3"
+			class="text-xs h-7 px-3 {activeTab === 'all' ? 'bg-foreground text-background' : 'text-foreground'}"
 			onclick={() => (activeTab = 'all')}
 		>
 			All ({users.length})
@@ -226,7 +277,7 @@
 		<Button
 			variant={activeTab === 'student' ? 'secondary' : 'ghost'}
 			size="sm"
-			class="text-xs h-7 px-3"
+			class="text-xs h-7 px-3 {activeTab === 'student' ? 'bg-foreground text-background' : 'text-foreground'}"
 			onclick={() => (activeTab = 'student')}
 		>
 			Students ({users.filter((u) => u.role === 'student').length})
@@ -234,7 +285,7 @@
 		<Button
 			variant={activeTab === 'warden' ? 'secondary' : 'ghost'}
 			size="sm"
-			class="text-xs h-7 px-3"
+			class="text-xs h-7 px-3 {activeTab === 'warden' ? 'bg-foreground text-background' : 'text-foreground'}"
 			onclick={() => (activeTab = 'warden')}
 		>
 			Wardens ({users.filter((u) => u.role === 'warden').length})
@@ -242,18 +293,18 @@
 		<Button
 			variant={activeTab === 'admin' ? 'secondary' : 'ghost'}
 			size="sm"
-			class="text-xs h-7 px-3"
+			class="text-xs h-7 px-3 {activeTab === 'admin' ? 'bg-foreground text-background' : 'text-foreground'}"
 			onclick={() => (activeTab = 'admin')}
 		>
 			Admins ({users.filter((u) => u.role === 'admin').length})
 		</Button>
 	</div>
 
-	<div class="relative w-full sm:w-64">
+	<div class="relative w-full sm:w-72">
 		<SearchIcon class="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
 		<Input
 			type="search"
-			placeholder="Search by name, email, room…"
+			placeholder="Search by name, roll no, emp ID, room…"
 			class="pl-9 h-9 text-xs"
 			bind:value={searchQuery}
 		/>
@@ -263,24 +314,25 @@
 {#if loading}
 	<ListSkeleton rows={6} />
 {:else if error}
-	<ErrorState message={error} onRetry={loadUsers} />
+	<ErrorState message={error} onRetry={loadData} />
 {:else if filteredUsers.length === 0}
 	<EmptyState
 		title="No users found"
 		description={searchQuery ? "No accounts match your search filter." : "No user accounts registered under this role."}
 	/>
 {:else}
-	<Card>
+	<Card class="border">
 		<CardContent class="px-0">
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead class="w-20">ID</TableHead>
-						<TableHead>Name</TableHead>
-						<TableHead>Email</TableHead>
+						<TableHead class="w-20">User ID</TableHead>
+						<TableHead>User Details</TableHead>
+						<TableHead>Identifier (Roll / Emp)</TableHead>
 						<TableHead>Role</TableHead>
-						<TableHead>Room</TableHead>
-						<TableHead>Created</TableHead>
+						<TableHead>Hostel Room</TableHead>
+						<TableHead>Assigned Warden</TableHead>
+						<TableHead>Registered</TableHead>
 						<TableHead class="text-right">Actions</TableHead>
 					</TableRow>
 				</TableHeader>
@@ -288,27 +340,65 @@
 					{#each filteredUsers as u (u.id)}
 						<TableRow>
 							<TableCell class="font-mono text-xs text-muted-foreground">{u.id}</TableCell>
-							<TableCell class="font-medium whitespace-nowrap">{u.name}</TableCell>
-							<TableCell class="text-muted-foreground text-xs">{u.email}</TableCell>
+							<TableCell class="whitespace-nowrap">
+								<div class="font-medium text-foreground">{u.name}</div>
+								<div class="text-xs text-muted-foreground font-mono">{u.email}</div>
+							</TableCell>
+							<TableCell class="whitespace-nowrap">
+								{#if u.role === 'student'}
+									{#if u.rollNo}
+										<span class="inline-flex items-center px-2 py-0.5 rounded font-mono text-xs font-semibold bg-muted border text-foreground">
+											Roll: {u.rollNo}
+										</span>
+									{:else}
+										<span class="text-xs text-muted-foreground italic">No Roll No</span>
+									{/if}
+								{:else if u.empId}
+									<span class="inline-flex items-center px-2 py-0.5 rounded font-mono text-xs font-semibold bg-foreground text-background">
+										Emp: {u.empId}
+									</span>
+								{:else}
+									<span class="text-xs text-muted-foreground">—</span>
+								{/if}
+							</TableCell>
 							<TableCell>
 								{#if u.role === 'admin'}
-									<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+									<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-foreground text-background">
 										<ShieldIcon class="size-3" />
 										Admin
 									</span>
 								{:else if u.role === 'warden'}
-									<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+									<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-muted text-foreground border border-border">
 										<SchoolIcon class="size-3" />
 										Warden
 									</span>
 								{:else}
-									<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+									<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted/60 text-foreground border border-border/80">
 										<UserIcon class="size-3" />
 										Student
 									</span>
 								{/if}
 							</TableCell>
-							<TableCell class="text-muted-foreground text-xs">{u.room ?? '—'}</TableCell>
+							<TableCell class="text-xs text-muted-foreground font-mono">
+								{u.room ?? '—'}
+							</TableCell>
+							<TableCell class="text-xs whitespace-nowrap">
+								{#if u.role === 'student'}
+									{#if u.warden}
+										<div class="flex items-center gap-1.5 text-foreground font-medium">
+											<UserCheckIcon class="size-3.5 text-muted-foreground" />
+											<span>{u.warden.name}</span>
+											{#if u.warden.empId}
+												<span class="font-mono text-[11px] text-muted-foreground">({u.warden.empId})</span>
+											{/if}
+										</div>
+									{:else}
+										<span class="text-muted-foreground italic">Unassigned</span>
+									{/if}
+								{:else}
+									<span class="text-muted-foreground">—</span>
+								{/if}
+							</TableCell>
 							<TableCell class="text-muted-foreground text-xs whitespace-nowrap">{formatDate(u.createdAt)}</TableCell>
 							<TableCell class="text-right whitespace-nowrap">
 								<div class="flex items-center justify-end gap-1">
@@ -324,7 +414,7 @@
 									<Button
 										variant="ghost"
 										size="icon-sm"
-										class="size-8 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
+										class="size-8 text-destructive hover:bg-destructive/10"
 										disabled={u.id === currentUser?.id}
 										onclick={() => openDeleteDialog(u)}
 										title={u.id === currentUser?.id ? "Cannot delete self" : "Delete user"}
@@ -346,7 +436,7 @@
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
 			<Dialog.Title>Add New User</Dialog.Title>
-			<Dialog.Description>Create a new student, warden, or administrator account.</Dialog.Description>
+			<Dialog.Description>Register a student with Roll No. & Warden, or a staff member with Employee ID.</Dialog.Description>
 		</Dialog.Header>
 		<form onsubmit={handleAddUser} class="space-y-3.5 py-2">
 			<div class="space-y-1">
@@ -361,32 +451,66 @@
 				<Label for="add-password">Initial Password *</Label>
 				<Input id="add-password" type="password" bind:value={addPassword} placeholder="•••••••• (min 6 characters)" required />
 			</div>
-			<div class="grid grid-cols-2 gap-3">
-				<div class="space-y-1">
-					<Label for="add-role">Role *</Label>
-					<select
-						id="add-role"
-						class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-						bind:value={addRole}
-					>
-						<option value="student">Student</option>
-						<option value="warden">Warden</option>
-						<option value="admin">Admin</option>
-					</select>
-				</div>
-				<div class="space-y-1">
-					<Label for="add-room">Hostel Room</Label>
-					<Input
-						id="add-room"
-						bind:value={addRoom}
-						placeholder="e.g. B-204"
-						disabled={addRole !== 'student'}
-					/>
-				</div>
+			
+			<!-- Role Selector -->
+			<div class="space-y-1">
+				<Label for="add-role">Account Role *</Label>
+				<select
+					id="add-role"
+					class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+					bind:value={addRole}
+				>
+					<option value="student">Student</option>
+					<option value="warden">Warden</option>
+					<option value="admin">Administrator</option>
+				</select>
 			</div>
+
+			{#if addRole === 'student'}
+				<div class="grid grid-cols-2 gap-3">
+					<div class="space-y-1">
+						<Label for="add-roll">Student Roll No *</Label>
+						<Input id="add-roll" bind:value={addRollNo} placeholder="e.g. 21BCE1042" required />
+					</div>
+					<div class="space-y-1">
+						<Label for="add-room">Hostel Room</Label>
+						<Input id="add-room" bind:value={addRoom} placeholder="e.g. B-204" />
+					</div>
+				</div>
+
+				<!-- Assigned Warden Dropdown -->
+				<div class="space-y-1">
+					<Label for="add-warden">Assigned Warden (1-to-1 Mapping) *</Label>
+					<select
+						id="add-warden"
+						class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+						bind:value={addWardenId}
+					>
+						{#if wardens.length === 0}
+							<option value="">No active wardens available</option>
+						{:else}
+							{#each wardens as w}
+								<option value={w.id}>{w.name} {w.empId ? `(${w.empId})` : `(${w.id})`}</option>
+							{/each}
+						{/if}
+					</select>
+					<p class="text-[11px] text-muted-foreground">Each student is managed strictly by this designated warden.</p>
+				</div>
+			{:else if addRole === 'warden'}
+				<div class="space-y-1">
+					<Label for="add-emp">Warden Employee ID *</Label>
+					<Input id="add-emp" bind:value={addEmpId} placeholder="e.g. EMP-1001" required />
+				</div>
+			{:else if addRole === 'admin'}
+				<div class="space-y-1">
+					<Label for="add-admin-emp">Administrator Employee ID (Optional)</Label>
+					<Input id="add-admin-emp" bind:value={addEmpId} placeholder="e.g. ADM-0001" />
+				</div>
+			{/if}
+
 			<Dialog.Footer class="pt-3">
 				<Button type="button" variant="outline" onclick={() => (addDialogOpen = false)}>Cancel</Button>
-				<Button type="submit" disabled={formSubmitting}>
+				<Button type="submit" disabled={formSubmitting} class="bg-foreground text-background hover:bg-foreground/90">
 					{formSubmitting ? 'Creating…' : 'Create User'}
 				</Button>
 			</Dialog.Footer>
@@ -399,7 +523,7 @@
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
 			<Dialog.Title>Edit User Account</Dialog.Title>
-			<Dialog.Description>Update profile details or reset password for {selectedUser?.name}.</Dialog.Description>
+			<Dialog.Description>Update profile details, roll number, employee ID, or warden assignment for {selectedUser?.name}.</Dialog.Description>
 		</Dialog.Header>
 		<form onsubmit={handleEditUser} class="space-y-3.5 py-2">
 			<div class="space-y-1">
@@ -414,32 +538,64 @@
 				<Label for="edit-password">New Password (leave empty to keep current)</Label>
 				<Input id="edit-password" type="password" bind:value={editPassword} placeholder="Leave blank to keep unchanged" />
 			</div>
-			<div class="grid grid-cols-2 gap-3">
+
+			<div class="space-y-1">
+				<Label for="edit-role">Role *</Label>
+				<select
+					id="edit-role"
+					class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+					bind:value={editRole}
+				>
+					<option value="student">Student</option>
+					<option value="warden">Warden</option>
+					<option value="admin">Administrator</option>
+				</select>
+			</div>
+
+			{#if editRole === 'student'}
+				<div class="grid grid-cols-2 gap-3">
+					<div class="space-y-1">
+						<Label for="edit-roll">Student Roll No *</Label>
+						<Input id="edit-roll" bind:value={editRollNo} placeholder="e.g. 21BCE1042" required />
+					</div>
+					<div class="space-y-1">
+						<Label for="edit-room">Hostel Room</Label>
+						<Input id="edit-room" bind:value={editRoom} placeholder="e.g. B-204" />
+					</div>
+				</div>
+
+				<!-- Assigned Warden Dropdown -->
 				<div class="space-y-1">
-					<Label for="edit-role">Role *</Label>
+					<Label for="edit-warden">Assigned Warden (1-to-1 Mapping) *</Label>
 					<select
-						id="edit-role"
+						id="edit-warden"
 						class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-						bind:value={editRole}
+						bind:value={editWardenId}
 					>
-						<option value="student">Student</option>
-						<option value="warden">Warden</option>
-						<option value="admin">Admin</option>
+						{#if wardens.length === 0}
+							<option value="">No active wardens available</option>
+						{:else}
+							{#each wardens as w}
+								<option value={w.id}>{w.name} {w.empId ? `(${w.empId})` : `(${w.id})`}</option>
+							{/each}
+						{/if}
 					</select>
 				</div>
+			{:else if editRole === 'warden'}
 				<div class="space-y-1">
-					<Label for="edit-room">Hostel Room</Label>
-					<Input
-						id="edit-room"
-						bind:value={editRoom}
-						placeholder="e.g. B-204"
-						disabled={editRole !== 'student'}
-					/>
+					<Label for="edit-emp">Warden Employee ID *</Label>
+					<Input id="edit-emp" bind:value={editEmpId} placeholder="e.g. EMP-1001" required />
 				</div>
-			</div>
+			{:else if editRole === 'admin'}
+				<div class="space-y-1">
+					<Label for="edit-admin-emp">Administrator Employee ID (Optional)</Label>
+					<Input id="edit-admin-emp" bind:value={editEmpId} placeholder="e.g. ADM-0001" />
+				</div>
+			{/if}
+
 			<Dialog.Footer class="pt-3">
 				<Button type="button" variant="outline" onclick={() => (editDialogOpen = false)}>Cancel</Button>
-				<Button type="submit" disabled={formSubmitting}>
+				<Button type="submit" disabled={formSubmitting} class="bg-foreground text-background hover:bg-foreground/90">
 					{formSubmitting ? 'Saving…' : 'Save Changes'}
 				</Button>
 			</Dialog.Footer>

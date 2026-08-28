@@ -281,7 +281,7 @@ describe('HostelGrievance Security Tests', () => {
 			const list = await app.request('/api/grievances', { headers: { Cookie: cookie } });
 			expect(list.status).toBe(200);
 			const listJson = await list.json();
-			expect(listJson.data.length).toBeGreaterThanOrEqual(8);
+			expect(listJson.data.length).toBeGreaterThanOrEqual(5);
 
 			const g = await app.request('/api/grievances/GRV-0003', { headers: { Cookie: cookie } });
 			expect(g.status).toBe(200);
@@ -865,7 +865,7 @@ describe('HostelGrievance Security Tests', () => {
 			const list = await app.request('/api/grievances', { headers: { Cookie: cookie } });
 			expect(list.status).toBe(200);
 			const listJson = await list.json();
-			expect(listJson.data.length).toBeGreaterThanOrEqual(8);
+			expect(listJson.data.length).toBeGreaterThanOrEqual(5);
 
 			// View specific grievance from another student
 			const detail = await app.request('/api/grievances/GRV-0003', { headers: { Cookie: cookie } });
@@ -942,7 +942,7 @@ describe('HostelGrievance Security Tests', () => {
 		it('admin can create student, warden, and admin accounts', async () => {
 			const { cookie } = await login(app, 'admin@example.test', 'admin123');
 
-			// Create student
+			// Create student with Roll No and assigned Warden
 			const stuRes = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -951,14 +951,18 @@ describe('HostelGrievance Security Tests', () => {
 					email: 'newstu@example.test',
 					password: 'password123',
 					role: 'student',
-					room: 'D-101'
+					room: 'D-101',
+					rollNo: '23BCE9001',
+					wardenId: 'war-1'
 				})
 			});
 			expect(stuRes.status).toBe(201);
 			const stuJson = await stuRes.json();
 			expect(stuJson.data.role).toBe('student');
+			expect(stuJson.data.rollNo).toBe('23BCE9001');
+			expect(stuJson.data.wardenId).toBe('war-1');
 
-			// Create warden
+			// Create warden with Emp ID
 			const warRes = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -966,12 +970,14 @@ describe('HostelGrievance Security Tests', () => {
 					name: 'New Warden Test',
 					email: 'newwar@example.test',
 					password: 'password123',
-					role: 'warden'
+					role: 'warden',
+					empId: 'EMP-9001'
 				})
 			});
 			expect(warRes.status).toBe(201);
 			const warJson = await warRes.json();
 			expect(warJson.data.role).toBe('warden');
+			expect(warJson.data.empId).toBe('EMP-9001');
 
 			// Create admin
 			const admRes = await app.request('/api/users', {
@@ -981,7 +987,8 @@ describe('HostelGrievance Security Tests', () => {
 					name: 'New Admin Test',
 					email: 'newadm@example.test',
 					password: 'password123',
-					role: 'admin'
+					role: 'admin',
+					empId: 'ADM-9001'
 				})
 			});
 			expect(admRes.status).toBe(201);
@@ -992,16 +999,17 @@ describe('HostelGrievance Security Tests', () => {
 		it('admin can update users and delete a grievance', async () => {
 			const { cookie } = await login(app, 'admin@example.test', 'admin123');
 
-			// Update student room and name
+			// Update student room, name, and roll number
 			const updateRes = await app.request('/api/users/stu-1', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
-				body: JSON.stringify({ name: 'Aarav Mehta Updated', room: 'Z-999' })
+				body: JSON.stringify({ name: 'Aarav Mehta Updated', room: 'Z-999', rollNo: '21BCE1042-UPD' })
 			});
 			expect(updateRes.status).toBe(200);
 			const updateJson = await updateRes.json();
 			expect(updateJson.data.name).toBe('Aarav Mehta Updated');
 			expect(updateJson.data.room).toBe('Z-999');
+			expect(updateJson.data.rollNo).toBe('21BCE1042-UPD');
 
 			// Admin delete grievance
 			const delGrv = await app.request('/api/grievances/GRV-0001', {
@@ -1031,7 +1039,7 @@ describe('HostelGrievance Security Tests', () => {
 			const listJson = await listRes.json();
 			expect(listJson.data.every((u: { role: string }) => u.role === 'student')).toBe(true);
 
-			// Warden can create a student
+			// Warden can create a student (automatically assigned to this warden)
 			const createStu = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -1040,11 +1048,13 @@ describe('HostelGrievance Security Tests', () => {
 					email: 'wstudent@example.test',
 					password: 'password123',
 					role: 'student',
+					rollNo: '23BCS8001',
 					room: 'E-201'
 				})
 			});
 			expect(createStu.status).toBe(201);
 			const createdStuJson = await createStu.json();
+			expect(createdStuJson.data.wardenId).toBe('war-1');
 
 			// Warden cannot create a warden or admin
 			const createWar = await app.request('/api/users', {
@@ -1054,7 +1064,8 @@ describe('HostelGrievance Security Tests', () => {
 					name: 'Illegal Warden',
 					email: 'illegalw@example.test',
 					password: 'password123',
-					role: 'warden'
+					role: 'warden',
+					empId: 'EMP-ILLEGAL'
 				})
 			});
 			expect(createWar.status).toBe(403);
@@ -1265,6 +1276,7 @@ describe('HostelGrievance Security Tests', () => {
 					email: 'testauditstu@example.test',
 					password: 'password123',
 					role: 'student',
+					rollNo: '23BCE7777',
 					room: 'C-301'
 				})
 			});
@@ -1313,5 +1325,307 @@ describe('HostelGrievance Security Tests', () => {
 			expect(Array.isArray(exportData.data)).toBe(true);
 		});
 	});
+
+	// ────────────────────────────────────────────────────────────────────────────
+	// Student Post-Resolution Review & Verification Tests
+	// ────────────────────────────────────────────────────────────────────────────
+
+	describe('Student Post-Resolution Review & Solution Picture', () => {
+		it('student can submit resolution review with rating, feedback, and solution picture on a resolved grievance', async () => {
+			// GRV-0004 is owned by stu-3 (Rohan Das) and is 'resolved'
+			const { cookie: stuCookie } = await login(app, 'rohan@example.test', 'student123');
+
+			const form = new FormData();
+			form.append('rating', '5');
+			form.append('feedback', 'The third floor common area has been completely cleaned. Very satisfied!');
+			form.append('file', new File([PNG], 'solution-fix.png', { type: 'image/png' }));
+
+			const res = await app.request('/api/grievances/GRV-0004/review', {
+				method: 'POST',
+				headers: { Cookie: stuCookie },
+				body: form
+			});
+
+			expect(res.status).toBe(201);
+			const json = await res.json();
+			expect(json.data).toHaveProperty('review');
+			expect(json.data.review).not.toBeNull();
+			expect(json.data.review.rating).toBe(5);
+			expect(json.data.review.feedback).toContain('completely cleaned');
+			expect(json.data.review.solutionAttachment).toBeDefined();
+			expect(json.data.review.solutionAttachment.filename).toBe('solution-fix.png');
+
+			// GET /api/grievances/GRV-0004/review
+			const getRev = await app.request('/api/grievances/GRV-0004/review', { headers: { Cookie: stuCookie } });
+			expect(getRev.status).toBe(200);
+			const getRevJson = await getRev.json();
+			expect(getRevJson.data.rating).toBe(5);
+
+			// Verify Admin Audit Log captured review.submitted
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+			const auditRes = await app.request('/api/audit-logs?search=GRV-0004', { headers: { Cookie: admCookie } });
+			expect(auditRes.status).toBe(200);
+			const auditJson = await auditRes.json();
+			const reviewAudit = auditJson.data.find((l: any) => l.eventType === 'review.submitted' && l.targetId === 'GRV-0004');
+			expect(reviewAudit).toBeDefined();
+			expect(reviewAudit.actorRole).toBe('student');
+			expect(reviewAudit.actorName).toBe('Rohan Das');
+		});
+
+		it('submitting review on an open or in-progress grievance is rejected (409 conflict)', async () => {
+			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
+
+			// GRV-0001 is Open
+			const form = new FormData();
+			form.append('rating', '4');
+			form.append('feedback', 'Premature review attempt');
+			form.append('file', new File([PNG], 'test.png', { type: 'image/png' }));
+
+			const res = await app.request('/api/grievances/GRV-0001/review', {
+				method: 'POST',
+				headers: { Cookie: stuCookie },
+				body: form
+			});
+
+			expect(res.status).toBe(409);
+			const json = await res.json();
+			expect(json.code).toBe('conflict');
+		});
+
+		it('student cannot submit review on another student grievance (403 forbidden)', async () => {
+			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
+
+			// GRV-0007 is owned by stu-3 (Rohan)
+			const form = new FormData();
+			form.append('rating', '5');
+			form.append('feedback', 'Trying to review another student ticket');
+			form.append('file', new File([PNG], 'test.png', { type: 'image/png' }));
+
+			const res = await app.request('/api/grievances/GRV-0007/review', {
+				method: 'POST',
+				headers: { Cookie: stuCookie },
+				body: form
+			});
+
+			expect(res.status).toBe(403);
+			const json = await res.json();
+			expect(json.code).toBe('unauthorized');
+		});
+
+		it('wardens and admins cannot submit resolution reviews (403 forbidden)', async () => {
+			const { cookie: warCookie } = await login(app, 'warden@example.test', 'warden123');
+
+			const form = new FormData();
+			form.append('rating', '5');
+			form.append('feedback', 'Warden review attempt');
+			form.append('file', new File([PNG], 'test.png', { type: 'image/png' }));
+
+			const res = await app.request('/api/grievances/GRV-0004/review', {
+				method: 'POST',
+				headers: { Cookie: warCookie },
+				body: form
+			});
+
+			expect(res.status).toBe(403);
+		});
+
+		it('submitting review without a picture or invalid rating is rejected (400 bad_request)', async () => {
+			// First resolve GRV-0002 for stu-1
+			const { cookie: warCookie } = await login(app, 'warden@example.test', 'warden123');
+			await app.request('/api/grievances/GRV-0002', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: warCookie },
+				body: JSON.stringify({ status: 'Resolved' })
+			});
+
+			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
+
+			// Missing file
+			const formNoFile = new FormData();
+			formNoFile.append('rating', '5');
+			formNoFile.append('feedback', 'Missing file test feedback');
+
+			const noFileRes = await app.request('/api/grievances/GRV-0002/review', {
+				method: 'POST',
+				headers: { Cookie: stuCookie },
+				body: formNoFile
+			});
+			expect(noFileRes.status).toBe(400);
+
+			// Invalid rating
+			const formBadRating = new FormData();
+			formBadRating.append('rating', '10');
+			formBadRating.append('feedback', 'Invalid rating test feedback');
+			formBadRating.append('file', new File([PNG], 'test.png', { type: 'image/png' }));
+
+			const badRatingRes = await app.request('/api/grievances/GRV-0002/review', {
+				method: 'POST',
+				headers: { Cookie: stuCookie },
+				body: formBadRating
+			});
+			expect(badRatingRes.status).toBe(400);
+		});
+	});
+
+	// ────────────────────────────────────────────────────────────────────────────
+	// Student-Warden 1-to-1 Mapping, Roll No, and Employee ID Tests
+	// ────────────────────────────────────────────────────────────────────────────
+
+	describe('Student-Warden 1-to-1 Mapping, Roll No, and Employee ID', () => {
+		it('warden can only list their own assigned students', async () => {
+			// war-1 (Mr. K. Sahu) is assigned to stu-1 and stu-2
+			const { cookie: war1Cookie } = await login(app, 'warden@example.test', 'warden123');
+			const listWar1 = await app.request('/api/users', { headers: { Cookie: war1Cookie } });
+			expect(listWar1.status).toBe(200);
+			const jsonWar1 = await listWar1.json();
+			expect(jsonWar1.data.every((s: any) => s.wardenId === 'war-1')).toBe(true);
+			expect(jsonWar1.data.some((s: any) => s.id === 'stu-1')).toBe(true);
+			expect(jsonWar1.data.some((s: any) => s.id === 'stu-2')).toBe(true);
+			expect(jsonWar1.data.some((s: any) => s.id === 'stu-3')).toBe(false); // stu-3 belongs to war-2
+
+			// war-2 (Mr. R. K. Mishra) is assigned to stu-3
+			const { cookie: war2Cookie } = await login(app, 'warden2@example.test', 'warden123');
+			const listWar2 = await app.request('/api/users', { headers: { Cookie: war2Cookie } });
+			expect(listWar2.status).toBe(200);
+			const jsonWar2 = await listWar2.json();
+			expect(jsonWar2.data.every((s: any) => s.wardenId === 'war-2')).toBe(true);
+			expect(jsonWar2.data.some((s: any) => s.id === 'stu-3')).toBe(true);
+			expect(jsonWar2.data.some((s: any) => s.id === 'stu-1')).toBe(false);
+		});
+
+		it('warden only sees grievances filed by their assigned students', async () => {
+			// war-1 should see grievances for stu-1 and stu-2, but not stu-3 (GRV-0004, GRV-0006, GRV-0007)
+			const { cookie: war1Cookie } = await login(app, 'warden@example.test', 'warden123');
+			const grvRes1 = await app.request('/api/grievances', { headers: { Cookie: war1Cookie } });
+			expect(grvRes1.status).toBe(200);
+			const grvJson1 = await grvRes1.json();
+			expect(grvJson1.data.every((g: any) => g.student.wardenId === 'war-1')).toBe(true);
+			expect(grvJson1.data.some((g: any) => g.id === 'GRV-0004')).toBe(false);
+
+			// war-2 should see grievances for stu-3
+			const { cookie: war2Cookie } = await login(app, 'warden2@example.test', 'warden123');
+			const grvRes2 = await app.request('/api/grievances', { headers: { Cookie: war2Cookie } });
+			expect(grvRes2.status).toBe(200);
+			const grvJson2 = await grvRes2.json();
+			expect(grvJson2.data.every((g: any) => g.student.wardenId === 'war-2')).toBe(true);
+			expect(grvJson2.data.some((g: any) => g.id === 'GRV-0004')).toBe(true);
+		});
+
+		it('rejects duplicate student roll number with 409 conflict', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			// Try creating student with already existing rollNo '21BCE1042'
+			const res = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({
+					name: 'Duplicate Roll Student',
+					email: 'duproll@example.test',
+					password: 'password123',
+					role: 'student',
+					rollNo: '21BCE1042',
+					wardenId: 'war-1'
+				})
+			});
+			expect(res.status).toBe(409);
+			const json = await res.json();
+			expect(json.error).toContain('roll number');
+		});
+
+		it('rejects duplicate warden employee ID with 409 conflict', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			// Try creating warden with already existing empId 'EMP-1001'
+			const res = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({
+					name: 'Duplicate Emp Warden',
+					email: 'dupemp@example.test',
+					password: 'password123',
+					role: 'warden',
+					empId: 'EMP-1001'
+				})
+			});
+			expect(res.status).toBe(409);
+			const json = await res.json();
+			expect(json.error).toContain('employee ID');
+		});
+
+		it('rejects assigning student to non-existent or non-warden account (400 bad_request)', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const res = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({
+					name: 'Invalid Warden Student',
+					email: 'invwar@example.test',
+					password: 'password123',
+					role: 'student',
+					rollNo: '24BCE1111',
+					wardenId: 'stu-1' // stu-1 is not a warden
+				})
+			});
+			expect(res.status).toBe(400);
+			const json = await res.json();
+			expect(json.error).toContain('Assigned warden');
+		});
+
+		it('admin can list all users and inspect rollNo, empId, and populated warden profile', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const res = await app.request('/api/users', { headers: { Cookie: admCookie } });
+			expect(res.status).toBe(200);
+			const json = await res.json();
+
+			const stu1 = json.data.find((u: any) => u.id === 'stu-1');
+			expect(stu1).toBeDefined();
+			expect(stu1.rollNo).toBeDefined();
+			expect(stu1.warden).toBeDefined();
+			expect(stu1.warden.name).toBe('Mr. K. Sahu');
+			expect(stu1.warden.empId).toBe('EMP-1001');
+
+			const war1 = json.data.find((u: any) => u.id === 'war-1');
+			expect(war1).toBeDefined();
+			expect(war1.empId).toBe('EMP-1001');
+		});
+
+		it('admin can reassign a student to another warden', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			// Reassign stu-1 to war-2
+			const patchRes = await app.request('/api/users/stu-1', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({ wardenId: 'war-2' })
+			});
+			expect(patchRes.status).toBe(200);
+			const patchJson = await patchRes.json();
+			expect(patchJson.data.wardenId).toBe('war-2');
+			expect(patchJson.data.warden.name).toBe('Mr. R. K. Mishra');
+
+			// Reassign back to war-1
+			await app.request('/api/users/stu-1', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({ wardenId: 'war-1' })
+			});
+		});
+
+		it('GET /api/users/wardens returns list of all wardens for admin assignment', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const res = await app.request('/api/users/wardens', { headers: { Cookie: admCookie } });
+			expect(res.status).toBe(200);
+			const json = await res.json();
+			expect(Array.isArray(json.data)).toBe(true);
+			expect(json.data.length).toBeGreaterThanOrEqual(2);
+			expect(json.data.every((w: any) => w.role === 'warden')).toBe(true);
+			expect(json.data.some((w: any) => w.empId === 'EMP-1001')).toBe(true);
+		});
+	});
 });
+
+
 

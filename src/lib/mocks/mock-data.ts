@@ -16,38 +16,53 @@ import type {
 export const MOCK_NOW = '2026-08-20T10:00:00.000Z';
 
 export const MOCK_USERS: Record<string, User> = {
+	'war-1': {
+		id: 'war-1',
+		name: 'Mr. K. Sahu',
+		email: 'warden@example.test',
+		role: 'warden',
+		empId: 'EMP-1001'
+	},
+	'war-2': {
+		id: 'war-2',
+		name: 'Mr. R. K. Mishra',
+		email: 'warden2@example.test',
+		role: 'warden',
+		empId: 'EMP-1002'
+	},
 	'stu-1': {
 		id: 'stu-1',
 		name: 'Aarav Mehta',
 		email: 'aarav.mehta@giet.edu',
 		role: 'student',
-		room: 'B-204'
+		room: 'B-204',
+		rollNo: '21BCE1042',
+		wardenId: 'war-1'
 	},
 	'stu-2': {
 		id: 'stu-2',
 		name: 'Priya Nair',
 		email: 'priya.nair@giet.edu',
 		role: 'student',
-		room: 'A-112'
+		room: 'A-112',
+		rollNo: '21BCE1088',
+		wardenId: 'war-1'
 	},
 	'stu-3': {
 		id: 'stu-3',
 		name: 'Rohan Das',
 		email: 'rohan.das@giet.edu',
 		role: 'student',
-		room: 'C-008'
-	},
-	'war-1': {
-		id: 'war-1',
-		name: 'Mr. K. Sahu',
-		email: 'warden@example.test',
-		role: 'warden'
+		room: 'C-008',
+		rollNo: '22BCS2015',
+		wardenId: 'war-2'
 	},
 	'adm-1': {
 		id: 'adm-1',
 		name: 'Dr. S. K. Panda (Admin)',
 		email: 'admin@example.test',
-		role: 'admin'
+		role: 'admin',
+		empId: 'ADM-0001'
 	}
 };
 

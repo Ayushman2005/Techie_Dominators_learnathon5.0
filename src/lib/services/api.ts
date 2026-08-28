@@ -7,6 +7,7 @@ import type {
 	CommentService,
 	CreateGrievanceInput,
 	GrievanceService,
+	SubmitReviewInput,
 	UserService,
 	UserStats,
 	AuditLogService
@@ -17,6 +18,7 @@ import type {
 	CreateUserInput,
 	Grievance,
 	GrievanceStatus,
+	ResolutionReview,
 	Result,
 	Role,
 	UpdateUserInput,
@@ -91,6 +93,15 @@ class ApiUserService implements UserService {
 		const json = await readJson(res);
 		if (!res.ok) {
 			return { ok: false, error: errorMessage(json, 'Could not load users.') };
+		}
+		return { ok: true, data: json.data as User[] };
+	}
+
+	async listWardens(): Promise<Result<User[]>> {
+		const res = await fetch('/api/users/wardens', { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not load wardens.') };
 		}
 		return { ok: true, data: json.data as User[] };
 	}
@@ -228,6 +239,31 @@ class ApiGrievanceService implements GrievanceService {
 			return { ok: false, error: errorMessage(json, 'Could not delete grievance.') };
 		}
 		return { ok: true, data: undefined };
+	}
+
+	async submitReview(id: string, input: SubmitReviewInput): Promise<Result<Grievance>> {
+		const form = new FormData();
+		form.set('rating', String(input.rating));
+		form.set('feedback', input.feedback);
+		form.set('file', input.file);
+
+		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}/review`, {
+			method: 'POST',
+			credentials: 'include',
+			body: form
+		});
+		return grievanceResult(res);
+	}
+
+	async getReview(id: string): Promise<Result<ResolutionReview | null>> {
+		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}/review`, {
+			credentials: 'include'
+		});
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not load review.') };
+		}
+		return { ok: true, data: (json.data as ResolutionReview) ?? null };
 	}
 }
 

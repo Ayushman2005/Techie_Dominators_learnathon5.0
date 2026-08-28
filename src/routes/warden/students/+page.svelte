@@ -42,12 +42,14 @@
 	let addName = $state('');
 	let addEmail = $state('');
 	let addPassword = $state('');
+	let addRollNo = $state('');
 	let addRoom = $state('');
 
 	// Edit Form fields
 	let editName = $state('');
 	let editEmail = $state('');
 	let editPassword = $state('');
+	let editRollNo = $state('');
 	let editRoom = $state('');
 
 	const filteredStudents = $derived(
@@ -58,7 +60,8 @@
 				const matchEmail = s.email.toLowerCase().includes(q);
 				const matchRoom = s.room?.toLowerCase().includes(q);
 				const matchId = s.id.toLowerCase().includes(q);
-				return matchName || matchEmail || matchRoom || matchId;
+				const matchRoll = s.rollNo?.toLowerCase().includes(q);
+				return matchName || matchEmail || matchRoom || matchId || matchRoll;
 			}
 			return true;
 		})
@@ -72,7 +75,7 @@
 	async function loadStudents() {
 		loading = true;
 		error = null;
-		// Request students only
+		// Request students assigned to this warden
 		const result = await userService.list('student');
 		if (result.ok) {
 			students = result.data;
@@ -86,14 +89,15 @@
 		addName = '';
 		addEmail = '';
 		addPassword = '';
+		addRollNo = '';
 		addRoom = '';
 		addDialogOpen = true;
 	}
 
 	async function handleAddStudent(e: SubmitEvent) {
 		e.preventDefault();
-		if (!addName.trim() || !addEmail.trim() || !addPassword) {
-			toast.error('Please fill in name, email, and password.');
+		if (!addName.trim() || !addEmail.trim() || !addPassword || !addRollNo.trim()) {
+			toast.error('Please fill in name, email, roll number, and password.');
 			return;
 		}
 
@@ -102,7 +106,8 @@
 			name: addName.trim(),
 			email: addEmail.trim(),
 			password: addPassword,
-			role: 'student', // Wardens can only create students
+			role: 'student', // Wardens can only create students (assigned to themselves)
+			rollNo: addRollNo.trim(),
 			room: addRoom.trim() || undefined
 		};
 
@@ -110,7 +115,7 @@
 		formSubmitting = false;
 
 		if (result.ok) {
-			toast.success(`Student ${result.data.name} added successfully.`);
+			toast.success(`Student ${result.data.name} (Roll: ${result.data.rollNo}) registered successfully.`);
 			addDialogOpen = false;
 			await loadStudents();
 		} else {
@@ -123,6 +128,7 @@
 		editName = s.name;
 		editEmail = s.email;
 		editPassword = '';
+		editRollNo = s.rollNo ?? '';
 		editRoom = s.room ?? '';
 		editDialogOpen = true;
 	}
@@ -130,8 +136,8 @@
 	async function handleEditStudent(e: SubmitEvent) {
 		e.preventDefault();
 		if (!selectedStudent) return;
-		if (!editName.trim() || !editEmail.trim()) {
-			toast.error('Name and Email are required.');
+		if (!editName.trim() || !editEmail.trim() || !editRollNo.trim()) {
+			toast.error('Name, Email, and Roll Number are required.');
 			return;
 		}
 
@@ -139,6 +145,7 @@
 		const payload: UpdateUserInput = {
 			name: editName.trim(),
 			email: editEmail.trim(),
+			rollNo: editRollNo.trim(),
 			room: editRoom.trim() || undefined
 		};
 		if (editPassword.trim()) {
@@ -181,14 +188,14 @@
 	loadStudents();
 </script>
 
-<svelte:head><title>Manage Students · Warden Portal</title></svelte:head>
+<svelte:head><title>My Assigned Students · Warden Portal</title></svelte:head>
 
 <PageHeader
 	title="Student Directory & Management"
-	description="Add, edit, or remove resident student records and assign hostel rooms."
+	description="Manage resident students assigned directly to your hostel wing."
 >
 	{#snippet actions()}
-		<Button onclick={openAddDialog} class="gap-1.5">
+		<Button onclick={openAddDialog} class="gap-1.5 bg-foreground text-background hover:bg-foreground/90">
 			<UserPlusIcon class="size-4" />
 			Add Student
 		</Button>
@@ -198,9 +205,9 @@
 <!-- Controls: Search & Summary -->
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 	<div class="flex items-center gap-2">
-		<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+		<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-muted text-foreground border border-border">
 			<GraduationCapIcon class="size-4" />
-			Total Students: {students.length}
+			Assigned Students: {students.length}
 		</span>
 	</div>
 
@@ -208,7 +215,7 @@
 		<SearchIcon class="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
 		<Input
 			type="search"
-			placeholder="Search by student name, email, room…"
+			placeholder="Search by name, roll no, room…"
 			class="pl-9 h-9 text-xs"
 			bind:value={searchQuery}
 		/>
@@ -221,16 +228,17 @@
 	<ErrorState message={error} onRetry={loadStudents} />
 {:else if filteredStudents.length === 0}
 	<EmptyState
-		title="No students found"
-		description={searchQuery ? "No students match your search filter." : "No student records found."}
+		title="No students assigned"
+		description={searchQuery ? "No students match your search filter." : "No resident students currently assigned to your wing."}
 	/>
 {:else}
-	<Card>
+	<Card class="border">
 		<CardContent class="px-0">
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead class="w-24">ID</TableHead>
+						<TableHead class="w-24">Student ID</TableHead>
+						<TableHead>Roll Number</TableHead>
 						<TableHead>Student Name</TableHead>
 						<TableHead>Email Address</TableHead>
 						<TableHead>Allocated Room</TableHead>
@@ -242,11 +250,20 @@
 					{#each filteredStudents as s (s.id)}
 						<TableRow>
 							<TableCell class="font-mono text-xs text-muted-foreground">{s.id}</TableCell>
-							<TableCell class="font-medium whitespace-nowrap">{s.name}</TableCell>
-							<TableCell class="text-muted-foreground text-xs">{s.email}</TableCell>
+							<TableCell>
+								{#if s.rollNo}
+									<span class="inline-flex items-center px-2 py-0.5 rounded font-mono text-xs font-semibold bg-muted border text-foreground">
+										{s.rollNo}
+									</span>
+								{:else}
+									<span class="text-xs text-muted-foreground italic">—</span>
+								{/if}
+							</TableCell>
+							<TableCell class="font-medium text-foreground whitespace-nowrap">{s.name}</TableCell>
+							<TableCell class="text-muted-foreground text-xs font-mono">{s.email}</TableCell>
 							<TableCell>
 								{#if s.room}
-									<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground border">
+									<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-muted/60 text-foreground border">
 										Room {s.room}
 									</span>
 								{:else}
@@ -268,7 +285,7 @@
 									<Button
 										variant="ghost"
 										size="icon-sm"
-										class="size-8 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
+										class="size-8 text-destructive hover:bg-destructive/10"
 										onclick={() => openDeleteDialog(s)}
 										title="Remove student"
 									>
@@ -289,12 +306,16 @@
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
 			<Dialog.Title>Add New Student</Dialog.Title>
-			<Dialog.Description>Register a new resident student and assign their hostel room.</Dialog.Description>
+			<Dialog.Description>Register a new resident student and assign their hostel room under your supervision.</Dialog.Description>
 		</Dialog.Header>
 		<form onsubmit={handleAddStudent} class="space-y-3.5 py-2">
 			<div class="space-y-1">
 				<Label for="stu-add-name">Full Name *</Label>
 				<Input id="stu-add-name" bind:value={addName} placeholder="e.g. Rahul Sharma" required />
+			</div>
+			<div class="space-y-1">
+				<Label for="stu-add-roll">Student Roll Number *</Label>
+				<Input id="stu-add-roll" bind:value={addRollNo} placeholder="e.g. 21BCE1042" required />
 			</div>
 			<div class="space-y-1">
 				<Label for="stu-add-email">University Email *</Label>
@@ -310,7 +331,7 @@
 			</div>
 			<Dialog.Footer class="pt-3">
 				<Button type="button" variant="outline" onclick={() => (addDialogOpen = false)}>Cancel</Button>
-				<Button type="submit" disabled={formSubmitting}>
+				<Button type="submit" disabled={formSubmitting} class="bg-foreground text-background hover:bg-foreground/90">
 					{formSubmitting ? 'Adding…' : 'Add Student'}
 				</Button>
 			</Dialog.Footer>
@@ -331,6 +352,10 @@
 				<Input id="stu-edit-name" bind:value={editName} required />
 			</div>
 			<div class="space-y-1">
+				<Label for="stu-edit-roll">Student Roll Number *</Label>
+				<Input id="stu-edit-roll" bind:value={editRollNo} required />
+			</div>
+			<div class="space-y-1">
 				<Label for="stu-edit-email">University Email *</Label>
 				<Input id="stu-edit-email" type="email" bind:value={editEmail} required />
 			</div>
@@ -344,7 +369,7 @@
 			</div>
 			<Dialog.Footer class="pt-3">
 				<Button type="button" variant="outline" onclick={() => (editDialogOpen = false)}>Cancel</Button>
-				<Button type="submit" disabled={formSubmitting}>
+				<Button type="submit" disabled={formSubmitting} class="bg-foreground text-background hover:bg-foreground/90">
 					{formSubmitting ? 'Saving…' : 'Save Changes'}
 				</Button>
 			</Dialog.Footer>

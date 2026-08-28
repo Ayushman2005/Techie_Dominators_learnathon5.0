@@ -5,13 +5,17 @@ import {
 	assembleGrievance,
 	assertCanViewGrievance,
 	deleteGrievance,
+	findResolutionReviewRow,
 	findUserById,
+	insertResolutionReview,
 	listAllGrievanceRows,
 	listCommentRows,
 	listGrievanceRowsForStudent,
+	listGrievanceRowsForWarden,
 	nextAttachmentId,
 	nextCommentId,
 	nextGrievanceId,
+	nextResolutionReviewId,
 	requireGrievance,
 	touchGrievance
 } from '../db/queries.ts';
@@ -58,10 +62,14 @@ export const grievanceRoutes = new Hono<AppEnv>();
 grievanceRoutes.get('/', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
-	const rows =
-		user.role === 'warden' || user.role === 'admin'
-			? listAllGrievanceRows(db)
-			: listGrievanceRowsForStudent(db, user.id);
+	let rows;
+	if (user.role === 'admin') {
+		rows = listAllGrievanceRows(db);
+	} else if (user.role === 'warden') {
+		rows = listGrievanceRowsForWarden(db, user.id);
+	} else {
+		rows = listGrievanceRowsForStudent(db, user.id);
+	}
 	return c.json({
 		data: rows.map((row) => assembleGrievance(db, row))
 	});
@@ -354,7 +362,137 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 });
 
 /**
+ * POST /api/grievances/:id/review
+ *
+ * Submit a student resolution review with a photo of the completed solution.
+ * - Only the student who created the grievance can submit a review.
+ * - The grievance MUST be in 'resolved' status.
+ * - A photo/picture of the solution is mandatory.
+ */
+grievanceRoutes.post('/:id/review', async (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+	const row = requireGrievance(db, c.req.param('id')!);
+
+	if (user.role !== 'student' || row.student_id !== user.id) {
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Unauthorized resolution review submission attempt',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: row.id,
+			targetType: 'grievance',
+			details: { reason: 'not_grievance_owner' },
+			status: 'warning'
+		});
+		throw new HttpError(403, 'unauthorized', 'Only the student who filed this grievance can submit a resolution review.');
+	}
+
+	if (row.status !== 'resolved') {
+		throw new HttpError(409, 'conflict', 'Resolution reviews can only be submitted once the grievance is resolved.');
+	}
+
+	const existing = findResolutionReviewRow(db, row.id);
+	if (existing) {
+		throw new HttpError(409, 'conflict', 'A resolution review has already been submitted for this grievance.');
+	}
+
+	const body = await c.req.parseBody();
+	const ratingRaw =
+		typeof body.rating === 'string'
+			? Number.parseInt(body.rating, 10)
+			: typeof body.rating === 'number'
+				? body.rating
+				: Number.NaN;
+
+	if (Number.isNaN(ratingRaw) || ratingRaw < 1 || ratingRaw > 5) {
+		throw new HttpError(400, 'bad_request', 'Rating must be an integer between 1 and 5.');
+	}
+
+	const feedback = typeof body.feedback === 'string' ? body.feedback.trim() : '';
+	if (feedback.length < 5) {
+		throw new HttpError(400, 'bad_request', 'Feedback must be at least 5 characters.');
+	}
+	if (feedback.length > 2000) {
+		throw new HttpError(400, 'bad_request', 'Feedback must be at most 2000 characters.');
+	}
+
+	const upload =
+		body.file instanceof File
+			? body.file
+			: body.attachment instanceof File
+				? body.attachment
+				: body.picture instanceof File
+					? body.picture
+					: undefined;
+
+	if (!upload) {
+		throw new HttpError(400, 'bad_request', 'A solution picture is required.');
+	}
+
+	const bytes = await bufferFromUpload(upload);
+	const stored = newStoredName(upload.type);
+	const ts = nowIso();
+	writeStoredFile(c.get('uploadsDir'), stored, bytes);
+
+	const attId = nextAttachmentId(db);
+	db.prepare(
+		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, data, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	).run(attId, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, bytes, ts);
+
+	const revId = nextResolutionReviewId(db);
+	insertResolutionReview(db, {
+		id: revId,
+		grievanceId: row.id,
+		studentId: user.id,
+		rating: ratingRaw,
+		feedback,
+		attachmentId: attId,
+		createdAt: ts
+	});
+	touchGrievance(db, row.id, ts);
+
+	recordAuditLog(c, db, {
+		eventType: 'review.submitted',
+		action: `Student posted resolution review (${ratingRaw}/5★) with solution picture`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: row.id,
+		targetType: 'grievance',
+		details: {
+			grievanceTitle: row.title,
+			rating: ratingRaw,
+			feedbackPreview: feedback.length > 100 ? `${feedback.slice(0, 100)}...` : feedback,
+			solutionPhoto: upload.name
+		},
+		status: 'success'
+	});
+
+	return c.json({ data: assembleGrievance(db, requireGrievance(db, row.id)) }, 201);
+});
+
+/**
+ * GET /api/grievances/:id/review
+ *
+ * Fetch the resolution review for a grievance.
+ */
+grievanceRoutes.get('/:id/review', (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+	const row = requireGrievance(db, c.req.param('id')!);
+	assertCanViewGrievance(user, row);
+	const grv = assembleGrievance(db, row);
+	return c.json({ data: grv.review ?? null });
+});
+
+/**
  * GET /api/grievances/:id
+
  *
  * Returns a single grievance with full details.
  * CRITICAL FIX: assertCanViewGrievance enforces that students can only view
