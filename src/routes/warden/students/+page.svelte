@@ -314,7 +314,7 @@
 				<Input id="stu-add-name" bind:value={addName} placeholder="e.g. Rahul Sharma" required />
 			</div>
 			<div class="space-y-1">
-				<Label for="stu-add-roll">Student Roll Number *</Label>
+				<Label for="stu-add-roll">Student ID (Roll Number) *</Label>
 				<Input id="stu-add-roll" bind:value={addRollNo} placeholder="e.g. 21BCE1042" required />
 			</div>
 			<div class="space-y-1">
@@ -328,6 +328,9 @@
 			<div class="space-y-1">
 				<Label for="stu-add-room">Hostel Room Number</Label>
 				<Input id="stu-add-room" bind:value={addRoom} placeholder="e.g. A-102" />
+			</div>
+			<div class="rounded-md bg-muted/60 p-2.5 text-xs text-muted-foreground border">
+				<span class="font-semibold text-foreground">1-to-1 Supervision:</span> This student will be automatically assigned under your active warden wing.
 			</div>
 			<Dialog.Footer class="pt-3">
 				<Button type="button" variant="outline" onclick={() => (addDialogOpen = false)}>Cancel</Button>

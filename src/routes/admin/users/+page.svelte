@@ -130,13 +130,19 @@
 			return;
 		}
 
-		if (addRole === 'student' && !addRollNo.trim()) {
-			toast.error('Roll Number is mandatory for students.');
-			return;
+		if (addRole === 'student') {
+			if (!addRollNo.trim()) {
+				toast.error('Student ID (Roll Number) is mandatory for students.');
+				return;
+			}
+			if (!addWardenId.trim()) {
+				toast.error('Please select an assigned warden. Each student must be under one warden.');
+				return;
+			}
 		}
 
 		if (addRole === 'warden' && !addEmpId.trim()) {
-			toast.error('Employee ID is mandatory for wardens.');
+			toast.error('Warden Employee ID (Emp ID) is mandatory for wardens.');
 			return;
 		}
 
@@ -148,6 +154,7 @@
 			role: addRole,
 			room: addRole === 'student' ? addRoom.trim() || undefined : undefined,
 			rollNo: addRole === 'student' ? addRollNo.trim() || undefined : undefined,
+			studentId: addRole === 'student' ? addRollNo.trim() || undefined : undefined,
 			empId: addRole === 'warden' || addRole === 'admin' ? addEmpId.trim() || undefined : undefined,
 			wardenId: addRole === 'student' ? addWardenId.trim() || undefined : undefined
 		};
@@ -185,13 +192,19 @@
 			return;
 		}
 
-		if (editRole === 'student' && !editRollNo.trim()) {
-			toast.error('Roll Number is mandatory for students.');
-			return;
+		if (editRole === 'student') {
+			if (!editRollNo.trim()) {
+				toast.error('Student ID (Roll Number) is mandatory for students.');
+				return;
+			}
+			if (!editWardenId.trim()) {
+				toast.error('Please select an assigned warden. Each student must be under one warden.');
+				return;
+			}
 		}
 
 		if (editRole === 'warden' && !editEmpId.trim()) {
-			toast.error('Employee ID is mandatory for wardens.');
+			toast.error('Warden Employee ID (Emp ID) is mandatory for wardens.');
 			return;
 		}
 
@@ -202,6 +215,7 @@
 			role: editRole,
 			room: editRole === 'student' ? editRoom.trim() || undefined : undefined,
 			rollNo: editRole === 'student' ? editRollNo.trim() || undefined : undefined,
+			studentId: editRole === 'student' ? editRollNo.trim() || undefined : undefined,
 			empId: editRole === 'warden' || editRole === 'admin' ? editEmpId.trim() || undefined : undefined,
 			wardenId: editRole === 'student' ? editWardenId.trim() || undefined : undefined
 		};
@@ -469,7 +483,7 @@
 			{#if addRole === 'student'}
 				<div class="grid grid-cols-2 gap-3">
 					<div class="space-y-1">
-						<Label for="add-roll">Student Roll No *</Label>
+						<Label for="add-roll">Student ID (Roll No) *</Label>
 						<Input id="add-roll" bind:value={addRollNo} placeholder="e.g. 21BCE1042" required />
 					</div>
 					<div class="space-y-1">
@@ -480,17 +494,19 @@
 
 				<!-- Assigned Warden Dropdown -->
 				<div class="space-y-1">
-					<Label for="add-warden">Assigned Warden (1-to-1 Mapping) *</Label>
+					<Label for="add-warden">Assigned Warden (Mandatory 1-to-1 Mapping) *</Label>
 					<select
 						id="add-warden"
 						class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 						bind:value={addWardenId}
+						required
 					>
 						{#if wardens.length === 0}
-							<option value="">No active wardens available</option>
+							<option value="" disabled>No active wardens available — create a warden first</option>
 						{:else}
+							<option value="" disabled>— Select Assigned Warden —</option>
 							{#each wardens as w}
-								<option value={w.id}>{w.name} {w.empId ? `(${w.empId})` : `(${w.id})`}</option>
+								<option value={w.id}>{w.name} {w.empId ? `(Emp ID: ${w.empId})` : `(${w.id})`}</option>
 							{/each}
 						{/if}
 					</select>
@@ -498,7 +514,7 @@
 				</div>
 			{:else if addRole === 'warden'}
 				<div class="space-y-1">
-					<Label for="add-emp">Warden Employee ID *</Label>
+					<Label for="add-emp">Warden Employee ID (Emp ID) *</Label>
 					<Input id="add-emp" bind:value={addEmpId} placeholder="e.g. EMP-1001" required />
 				</div>
 			{:else if addRole === 'admin'}
@@ -523,7 +539,7 @@
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
 			<Dialog.Title>Edit User Account</Dialog.Title>
-			<Dialog.Description>Update profile details, roll number, employee ID, or warden assignment for {selectedUser?.name}.</Dialog.Description>
+			<Dialog.Description>Update profile details, student ID, employee ID, or warden assignment for {selectedUser?.name}.</Dialog.Description>
 		</Dialog.Header>
 		<form onsubmit={handleEditUser} class="space-y-3.5 py-2">
 			<div class="space-y-1">
@@ -555,7 +571,7 @@
 			{#if editRole === 'student'}
 				<div class="grid grid-cols-2 gap-3">
 					<div class="space-y-1">
-						<Label for="edit-roll">Student Roll No *</Label>
+						<Label for="edit-roll">Student ID (Roll No) *</Label>
 						<Input id="edit-roll" bind:value={editRollNo} placeholder="e.g. 21BCE1042" required />
 					</div>
 					<div class="space-y-1">
@@ -566,24 +582,26 @@
 
 				<!-- Assigned Warden Dropdown -->
 				<div class="space-y-1">
-					<Label for="edit-warden">Assigned Warden (1-to-1 Mapping) *</Label>
+					<Label for="edit-warden">Assigned Warden (Mandatory 1-to-1 Mapping) *</Label>
 					<select
 						id="edit-warden"
 						class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 						bind:value={editWardenId}
+						required
 					>
 						{#if wardens.length === 0}
-							<option value="">No active wardens available</option>
+							<option value="" disabled>No active wardens available</option>
 						{:else}
+							<option value="" disabled>— Select Assigned Warden —</option>
 							{#each wardens as w}
-								<option value={w.id}>{w.name} {w.empId ? `(${w.empId})` : `(${w.id})`}</option>
+								<option value={w.id}>{w.name} {w.empId ? `(Emp ID: ${w.empId})` : `(${w.id})`}</option>
 							{/each}
 						{/if}
 					</select>
 				</div>
 			{:else if editRole === 'warden'}
 				<div class="space-y-1">
-					<Label for="edit-emp">Warden Employee ID *</Label>
+					<Label for="edit-emp">Warden Employee ID (Emp ID) *</Label>
 					<Input id="edit-emp" bind:value={editEmpId} placeholder="e.g. EMP-1001" required />
 				</div>
 			{:else if editRole === 'admin'}

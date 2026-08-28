@@ -28,11 +28,13 @@ export interface User {
 	role: Role;
 	/** For students: hostel room identifier shown to wardens. */
 	room?: string | null;
-	/** For students: unique roll number / registration number. */
+	/** For students: unique roll number / Student ID. */
 	rollNo?: string | null;
+	/** For students: alias for rollNo / Student ID. */
+	studentId?: string | null;
 	/** For wardens / admins: unique employee staff ID. */
 	empId?: string | null;
-	/** For students: assigned warden's user ID. */
+	/** For students: assigned warden's user ID (1-to-1 mapping). */
 	wardenId?: string | null;
 	/** For students: populated assigned warden profile. */
 	warden?: User | null;
@@ -45,6 +47,7 @@ export interface CreateUserInput {
 	password: string;
 	role: Role;
 	room?: string;
+	studentId?: string;
 	rollNo?: string;
 	empId?: string;
 	wardenId?: string;
@@ -56,6 +59,7 @@ export interface UpdateUserInput {
 	password?: string;
 	role?: Role;
 	room?: string;
+	studentId?: string;
 	rollNo?: string;
 	empId?: string;
 	wardenId?: string;

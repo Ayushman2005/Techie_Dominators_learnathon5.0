@@ -1572,6 +1572,47 @@ describe('HostelGrievance Security Tests', () => {
 			expect(json.error).toContain('Assigned warden');
 		});
 
+		it('rejects admin creating a student without selecting a warden (400 bad_request)', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const res = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({
+					name: 'Unassigned Student',
+					email: 'unassigned@example.test',
+					password: 'password123',
+					role: 'student',
+					rollNo: '24BCE2222'
+					// wardenId missing
+				})
+			});
+			expect(res.status).toBe(400);
+			const json = await res.json();
+			expect(json.error).toContain('assigned warden');
+		});
+
+		it('supports studentId alias when creating student', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const res = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({
+					name: 'Alias Test Student',
+					email: 'alias@example.test',
+					password: 'password123',
+					role: 'student',
+					studentId: '24BCE3333',
+					wardenId: 'war-1'
+				})
+			});
+			expect(res.status).toBe(201);
+			const json = await res.json();
+			expect(json.data.rollNo).toBe('24BCE3333');
+			expect(json.data.wardenId).toBe('war-1');
+		});
+
 		it('admin can list all users and inspect rollNo, empId, and populated warden profile', async () => {
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 

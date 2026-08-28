@@ -11,6 +11,9 @@
 	import type { Grievance } from '$lib/types';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import GraduationCapIcon from '@lucide/svelte/icons/graduation-cap';
+	import UserCheckIcon from '@lucide/svelte/icons/user-check';
+	import HomeIcon from '@lucide/svelte/icons/home';
 
 	let grievances = $state<Grievance[]>([]);
 	let loading = $state(true);
@@ -56,6 +59,38 @@
 		</Button>
 	{/snippet}
 </PageHeader>
+
+<!-- Student Profile Info Bar -->
+{#if user}
+	<div class="mb-6 flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3 text-xs shadow-sm">
+		<div class="flex items-center gap-1.5 font-medium text-foreground">
+			<GraduationCapIcon class="size-4 text-muted-foreground" />
+			<span>Student ID:</span>
+			<span class="font-mono font-semibold bg-muted px-2 py-0.5 rounded border">{user.rollNo ?? user.studentId ?? '—'}</span>
+		</div>
+		<div class="h-4 w-px bg-border hidden sm:block"></div>
+		<div class="flex items-center gap-1.5 text-muted-foreground">
+			<HomeIcon class="size-3.5" />
+			<span>Allocated Room:</span>
+			<span class="font-mono font-medium text-foreground">{user.room ? `Room ${user.room}` : 'Unassigned'}</span>
+		</div>
+		<div class="h-4 w-px bg-border hidden sm:block"></div>
+		<div class="flex items-center gap-1.5 text-muted-foreground">
+			<UserCheckIcon class="size-3.5 text-foreground" />
+			<span>Assigned Warden:</span>
+			{#if user.warden}
+				<span class="font-medium text-foreground">
+					{user.warden.name}
+					{#if user.warden.empId}
+						<span class="font-mono text-[11px] text-muted-foreground">(Emp ID: {user.warden.empId})</span>
+					{/if}
+				</span>
+			{:else}
+				<span class="italic text-muted-foreground">Wing Warden</span>
+			{/if}
+		</div>
+	</div>
+{/if}
 
 {#if loading}
 	<div class="grid gap-4 sm:grid-cols-3">

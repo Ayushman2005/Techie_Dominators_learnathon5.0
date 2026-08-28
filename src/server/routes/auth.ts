@@ -9,7 +9,7 @@ import {
 	setSessionCookie
 } from '../auth/session.ts';
 import { verifyPassword } from '../auth/passwords.ts';
-import { findUserByEmail, findUserById } from '../db/queries.ts';
+import { assembleUser, findUserByEmail, findUserById } from '../db/queries.ts';
 import { toPublicUser } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
 import { loginRateLimit } from '../middleware/ratelimit.ts';
@@ -80,7 +80,7 @@ authRoutes.post('/login', loginRateLimit, async (c) => {
 		status: 'success'
 	});
 
-	return c.json({ user: toPublicUser(user) });
+	return c.json({ user: assembleUser(db, user) });
 });
 
 /**
@@ -133,6 +133,10 @@ authRoutes.post('/logout', (c) => {
  */
 authRoutes.get('/me', (c) => {
 	const db = c.get('db');
-	const user = requireUser(c, db);
-	return c.json({ user: toPublicUser(user) });
+	const sessionUser = requireUser(c, db);
+	const user = findUserById(db, sessionUser.id);
+	if (!user) {
+		throw new HttpError(404, 'not_found', 'User not found.');
+	}
+	return c.json({ user: assembleUser(db, user) });
 });

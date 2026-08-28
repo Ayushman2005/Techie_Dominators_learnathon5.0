@@ -154,7 +154,8 @@ class MockUserService implements UserService {
 			email: input.email,
 			role: input.role,
 			room: input.room,
-			rollNo: input.rollNo,
+			rollNo: input.rollNo ?? input.studentId,
+			studentId: input.studentId ?? input.rollNo,
 			empId: input.empId,
 			wardenId: input.wardenId,
 			createdAt: nowIso()
@@ -170,7 +171,10 @@ class MockUserService implements UserService {
 		if (input.email) user.email = input.email;
 		if (input.role) user.role = input.role;
 		if (input.room !== undefined) user.room = input.room;
-		if (input.rollNo !== undefined) user.rollNo = input.rollNo;
+		if (input.rollNo !== undefined || input.studentId !== undefined) {
+			user.rollNo = input.rollNo ?? input.studentId ?? null;
+			user.studentId = input.studentId ?? input.rollNo ?? null;
+		}
 		if (input.empId !== undefined) user.empId = input.empId;
 		if (input.wardenId !== undefined) user.wardenId = input.wardenId;
 		return delay({ ok: true as const, data: enrichUser(user) });

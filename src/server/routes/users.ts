@@ -130,9 +130,20 @@ userRoutes.post('/', async (c) => {
 	const password = typeof raw.password === 'string' ? raw.password : '';
 	const role = raw.role as Role;
 	const room = typeof raw.room === 'string' && raw.room.trim() ? raw.room.trim() : null;
-	const rollNo = typeof raw.rollNo === 'string' && raw.rollNo.trim() ? raw.rollNo.trim() : typeof raw.roll_no === 'string' && raw.roll_no.trim() ? raw.roll_no.trim() : null;
-	const empId = typeof raw.empId === 'string' && raw.empId.trim() ? raw.empId.trim() : typeof raw.emp_id === 'string' && raw.emp_id.trim() ? raw.emp_id.trim() : null;
-	let wardenId = typeof raw.wardenId === 'string' && raw.wardenId.trim() ? raw.wardenId.trim() : typeof raw.warden_id === 'string' && raw.warden_id.trim() ? raw.warden_id.trim() : null;
+	const rollNo =
+		(typeof raw.rollNo === 'string' && raw.rollNo.trim()) ||
+		(typeof raw.studentId === 'string' && raw.studentId.trim()) ||
+		(typeof raw.roll_no === 'string' && raw.roll_no.trim()) ||
+		(typeof raw.student_id === 'string' && raw.student_id.trim()) ||
+		null;
+	const empId =
+		(typeof raw.empId === 'string' && raw.empId.trim()) ||
+		(typeof raw.emp_id === 'string' && raw.emp_id.trim()) ||
+		null;
+	let wardenId =
+		(typeof raw.wardenId === 'string' && raw.wardenId.trim()) ||
+		(typeof raw.warden_id === 'string' && raw.warden_id.trim()) ||
+		null;
 
 	if (!name || name.length > 100) {
 		throw new HttpError(400, 'bad_request', 'Name is required (max 100 characters).');
@@ -170,11 +181,14 @@ userRoutes.post('/', async (c) => {
 	// Student specific validations
 	if (role === 'student') {
 		if (!rollNo) {
-			throw new HttpError(400, 'bad_request', 'Roll number is required for students.');
+			throw new HttpError(400, 'bad_request', 'Student ID / Roll number is required for students.');
 		}
 		const existingRoll = findUserByRollNo(db, rollNo);
 		if (existingRoll) {
 			throw new HttpError(409, 'conflict', `A student with roll number '${rollNo}' already exists.`);
+		}
+		if (!wardenId && user.role === 'admin') {
+			throw new HttpError(400, 'bad_request', 'Please select an assigned warden for the student. Each student must be under one warden.');
 		}
 		if (wardenId) {
 			const wardenUser = findUserById(db, wardenId);
@@ -381,8 +395,13 @@ userRoutes.patch('/:id', async (c) => {
 		updates.room = typeof raw.room === 'string' && raw.room.trim() ? raw.room.trim() : null;
 	}
 
-	if ('rollNo' in raw || 'roll_no' in raw) {
-		const rVal = typeof raw.rollNo === 'string' ? raw.rollNo.trim() : typeof raw.roll_no === 'string' ? raw.roll_no.trim() : null;
+	if ('rollNo' in raw || 'roll_no' in raw || 'studentId' in raw || 'student_id' in raw) {
+		const rVal =
+			(typeof raw.rollNo === 'string' && raw.rollNo.trim()) ||
+			(typeof raw.studentId === 'string' && raw.studentId.trim()) ||
+			(typeof raw.roll_no === 'string' && raw.roll_no.trim()) ||
+			(typeof raw.student_id === 'string' && raw.student_id.trim()) ||
+			null;
 		if (rVal && rVal !== targetUser.roll_no) {
 			const existing = findUserByRollNo(db, rVal);
 			if (existing && existing.id !== targetId) {
