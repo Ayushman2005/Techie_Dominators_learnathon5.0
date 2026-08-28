@@ -31,6 +31,7 @@ coverage/
 # Environment Variables & Config
 .env
 .env.*
+.env.example
 !.env.example
 !.env.test
 .env.local
