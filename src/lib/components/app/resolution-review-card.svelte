@@ -177,7 +177,7 @@
 							</div>
 						</a>
 						<div class="mt-2 flex items-center justify-between text-xs text-muted-foreground px-1">
-							<span class="truncate max-w-[200px]">{review.solutionAttachment.filename}</span>
+							<span class="truncate max-w-50">{review.solutionAttachment.filename}</span>
 							<span class="font-mono text-[11px]">{(review.solutionAttachment.sizeBytes / 1024).toFixed(1)} KB</span>
 						</div>
 					</div>
