@@ -3,6 +3,7 @@ import type { AppEnv } from '../env.ts';
 import { requireUser } from '../auth/session.ts';
 import {
 	assembleGrievance,
+	assertCanViewGrievance,
 	findUserById,
 	listAllGrievanceRows,
 	listCommentRows,
@@ -23,6 +24,14 @@ import {
 	originalBasename,
 	writeStoredFile
 } from '../storage/attachments.ts';
+import { securityLog } from '../logger.ts';
+import { commentRateLimit, createGrievanceRateLimit } from '../middleware/ratelimit.ts';
+
+// Text field limits to prevent abuse and oversized inputs
+const MAX_TITLE_LENGTH = 200;
+const MAX_DESCRIPTION_LENGTH = 5000;
+const MAX_COMMENT_LENGTH = 2000;
+const MIN_COMMENT_LENGTH = 3;
 
 function nowIso(): string {
 	return new Date().toISOString();
@@ -34,6 +43,16 @@ function readString(value: unknown): string | undefined {
 
 export const grievanceRoutes = new Hono<AppEnv>();
 
+/**
+ * GET /api/grievances
+ *
+ * Returns grievances scoped to the authenticated user's role:
+ * - Student: only their own grievances (enforced at DB query level)
+ * - Warden: all grievances
+ *
+ * The server determines the scope from the validated session — never from
+ * a client-supplied parameter.
+ */
 grievanceRoutes.get('/', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -44,7 +63,14 @@ grievanceRoutes.get('/', (c) => {
 	});
 });
 
-grievanceRoutes.post('/', async (c) => {
+/**
+ * POST /api/grievances
+ *
+ * Create a new grievance. Only students may file grievances.
+ * The student_id is taken from the authenticated session — never from the request body.
+ * Rate limited to prevent abuse.
+ */
+grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 	const db = c.get('db');
 	const uploadsDir = c.get('uploadsDir');
 	const user = requireUser(c, db);
@@ -82,14 +108,27 @@ grievanceRoutes.post('/', async (c) => {
 
 	title = title.trim();
 	description = description.trim();
+
+	// Input validation with length limits
 	if (title.length < 5) {
 		throw new HttpError(400, 'bad_request', 'Title must be at least 5 characters.');
+	}
+	if (title.length > MAX_TITLE_LENGTH) {
+		throw new HttpError(400, 'bad_request', `Title must be at most ${MAX_TITLE_LENGTH} characters.`);
 	}
 	if (description.length < 20) {
 		throw new HttpError(400, 'bad_request', 'Description must be at least 20 characters.');
 	}
+	if (description.length > MAX_DESCRIPTION_LENGTH) {
+		throw new HttpError(
+			400,
+			'bad_request',
+			`Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`
+		);
+	}
 	const parsedCategory = parseCategory(category);
 
+	// student_id comes from the validated server-side session, never from the client
 	const id = nextGrievanceId(db);
 	const ts = nowIso();
 	db.prepare(
@@ -99,6 +138,7 @@ grievanceRoutes.post('/', async (c) => {
 
 	if (upload) {
 		const bytes = await bufferFromUpload(upload);
+		// Stored filename is always server-generated — never user-controlled
 		const stored = newStoredName(upload.type);
 		writeStoredFile(uploadsDir, stored, bytes);
 		db.prepare(
@@ -113,15 +153,33 @@ grievanceRoutes.post('/', async (c) => {
 			bytes.byteLength,
 			ts
 		);
+		securityLog('file_upload_success', {
+			userId: user.id,
+			resourceId: id,
+			resourceType: 'grievance_attachment',
+			sizeBytes: bytes.byteLength,
+			mimeType: upload.type
+		});
 	}
 
+	securityLog('grievance_created', { userId: user.id, resourceId: id });
 	return c.json({ data: assembleGrievance(db, requireGrievance(db, id)) }, 201);
 });
 
+/**
+ * GET /api/grievances/:id/comments
+ *
+ * Returns comments for a grievance.
+ * CRITICAL FIX: assertCanViewGrievance enforces that students can only view
+ * comments on their own grievances. Without this check, IDOR allowed any
+ * authenticated student to read any grievance's comments.
+ */
 grievanceRoutes.get('/:id/comments', (c) => {
 	const db = c.get('db');
-	requireUser(c, db);
+	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id'));
+	// Authorization: students can only view comments on their own grievances
+	assertCanViewGrievance(user, row);
 	const comments = listCommentRows(db, row.id).map((comment) => {
 		const authorRow = findUserById(db, comment.author_id);
 		if (!authorRow) {
@@ -132,10 +190,21 @@ grievanceRoutes.get('/:id/comments', (c) => {
 	return c.json({ data: comments });
 });
 
-grievanceRoutes.post('/:id/comments', async (c) => {
+/**
+ * POST /api/grievances/:id/comments
+ *
+ * Add a comment to a grievance.
+ * - Students may only comment on their own grievances
+ * - Wardens may comment on any grievance (part of their review workflow)
+ * Rate limited per user.
+ */
+grievanceRoutes.post('/:id/comments', commentRateLimit, async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id'));
+
+	// Authorization: students can only comment on their own grievances
+	assertCanViewGrievance(user, row);
 
 	let body: unknown;
 	try {
@@ -147,8 +216,11 @@ grievanceRoutes.post('/:id/comments', async (c) => {
 		body && typeof body === 'object' && 'body' in body && typeof body.body === 'string'
 			? body.body.trim()
 			: '';
-	if (!text) {
-		throw new HttpError(400, 'bad_request', 'Comment cannot be empty.');
+	if (!text || text.length < MIN_COMMENT_LENGTH) {
+		throw new HttpError(400, 'bad_request', `Comment must be at least ${MIN_COMMENT_LENGTH} characters.`);
+	}
+	if (text.length > MAX_COMMENT_LENGTH) {
+		throw new HttpError(400, 'bad_request', `Comment must be at most ${MAX_COMMENT_LENGTH} characters.`);
 	}
 
 	const id = nextCommentId(db);
@@ -158,6 +230,13 @@ grievanceRoutes.post('/:id/comments', async (c) => {
 	).run(id, row.id, user.id, text, ts);
 	touchGrievance(db, row.id, ts);
 
+	securityLog('comment_created', {
+		userId: user.id,
+		role: user.role,
+		resourceId: row.id,
+		resourceType: 'grievance'
+	});
+
 	const author = findUserById(db, user.id);
 	if (!author) {
 		throw new HttpError(500, 'internal', 'Internal server error.');
@@ -166,11 +245,23 @@ grievanceRoutes.post('/:id/comments', async (c) => {
 	return c.json({ data: toPublicComment(commentRow, toPublicUser(author)) }, 201);
 });
 
+/**
+ * POST /api/grievances/:id/attachments
+ *
+ * Upload an attachment to an existing grievance.
+ * Only the student owner of the grievance may attach files.
+ */
 grievanceRoutes.post('/:id/attachments', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id'));
 	if (user.role !== 'student' || row.student_id !== user.id) {
+		securityLog('authorization_failure', {
+			userId: user.id,
+			role: user.role,
+			resourceId: row.id,
+			reason: 'not_attachment_owner'
+		});
 		throw new HttpError(403, 'unauthorized', 'Only the student owner can add attachments.');
 	}
 	if (row.status === 'resolved') {
@@ -178,13 +269,15 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 	}
 
 	const body = await c.req.parseBody();
-	const upload = body.file instanceof File ? body.file : body.attachment instanceof File ? body.attachment : undefined;
+	const upload =
+		body.file instanceof File ? body.file : body.attachment instanceof File ? body.attachment : undefined;
 	if (!upload) {
 		throw new HttpError(400, 'bad_request', 'A file field named file is required.');
 	}
 
 	const bytes = await bufferFromUpload(upload);
-	const stored = newStoredName(upload.type, upload.name);
+	// Always generate a random stored filename — never use the user-supplied name as the stored path
+	const stored = newStoredName(upload.type);
 	const ts = nowIso();
 	writeStoredFile(c.get('uploadsDir'), stored, bytes);
 	const id = nextAttachmentId(db);
@@ -193,17 +286,44 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
      VALUES (?, ?, ?, ?, ?, ?, ?)`
 	).run(id, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, ts);
 	touchGrievance(db, row.id, ts);
+
+	securityLog('file_upload_success', {
+		userId: user.id,
+		resourceId: row.id,
+		resourceType: 'grievance_attachment',
+		sizeBytes: bytes.byteLength,
+		mimeType: upload.type
+	});
+
 	const saved = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow;
 	return c.json({ data: toPublicAttachment(saved) }, 201);
 });
 
+/**
+ * GET /api/grievances/:id
+ *
+ * Returns a single grievance with full details.
+ * CRITICAL FIX: assertCanViewGrievance enforces that students can only view
+ * their own grievances. Previously this check was missing despite the helper
+ * function existing in the codebase — a classic "dead code IDOR" bug.
+ */
 grievanceRoutes.get('/:id', (c) => {
 	const db = c.get('db');
-	requireUser(c, db);
+	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id'));
+	// CRITICAL: must call this — it throws 403 for students accessing others' grievances
+	assertCanViewGrievance(user, row);
 	return c.json({ data: assembleGrievance(db, row) });
 });
 
+/**
+ * PATCH /api/grievances/:id
+ *
+ * Update a grievance. Role-based authorization:
+ * - Students: may edit content (title/description/category) of their OWN open grievances only
+ *   CRITICAL FIX: added ownership check (row.student_id !== user.id) — previously missing
+ * - Wardens: may only change status (not content)
+ */
 grievanceRoutes.patch('/:id', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -232,22 +352,45 @@ grievanceRoutes.patch('/:id', async (c) => {
 
 	switch (user.role) {
 		case 'student': {
+			// CRITICAL FIX: Ownership check — student can only edit their own grievances
+			if (row.student_id !== user.id) {
+				securityLog('authorization_failure', {
+					userId: user.id,
+					role: user.role,
+					resourceId: row.id,
+					reason: 'student_not_owner'
+				});
+				throw new HttpError(403, 'unauthorized', 'Access denied.');
+			}
 			if (row.status === 'resolved') {
 				throw new HttpError(409, 'conflict', 'Resolved grievances cannot be edited.');
+			}
+			// Students cannot change status — only wardens can
+			if (wantsStatus) {
+				throw new HttpError(403, 'unauthorized', 'Students cannot change grievance status.');
 			}
 			let nextTitle = row.title;
 			let nextDescription = row.description;
 			let nextCategory = row.category;
-			let nextStatus: GrievanceStatusDb = row.status;
 			if (title !== undefined) {
 				if (typeof title !== 'string' || title.trim().length < 5) {
 					throw new HttpError(400, 'bad_request', 'Title must be at least 5 characters.');
+				}
+				if (title.trim().length > MAX_TITLE_LENGTH) {
+					throw new HttpError(400, 'bad_request', `Title must be at most ${MAX_TITLE_LENGTH} characters.`);
 				}
 				nextTitle = title.trim();
 			}
 			if (description !== undefined) {
 				if (typeof description !== 'string' || description.trim().length < 20) {
 					throw new HttpError(400, 'bad_request', 'Description must be at least 20 characters.');
+				}
+				if (description.trim().length > MAX_DESCRIPTION_LENGTH) {
+					throw new HttpError(
+						400,
+						'bad_request',
+						`Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`
+					);
 				}
 				nextDescription = description.trim();
 			}
@@ -257,16 +400,10 @@ grievanceRoutes.patch('/:id', async (c) => {
 				}
 				nextCategory = parseCategory(category);
 			}
-			if (status !== undefined) {
-				if (typeof status !== 'string') {
-					throw new HttpError(400, 'bad_request', 'Invalid grievance status.');
-				}
-				nextStatus = statusToDb(status);
-			}
 			const ts = nowIso();
 			db.prepare(
-				'UPDATE grievances SET title = ?, description = ?, category = ?, status = ?, updated_at = ? WHERE id = ?'
-			).run(nextTitle, nextDescription, nextCategory, nextStatus, ts, row.id);
+				'UPDATE grievances SET title = ?, description = ?, category = ?, updated_at = ? WHERE id = ?'
+			).run(nextTitle, nextDescription, nextCategory, ts, row.id);
 			break;
 		}
 		case 'warden': {
@@ -276,13 +413,19 @@ grievanceRoutes.patch('/:id', async (c) => {
 			if (typeof status !== 'string') {
 				throw new HttpError(400, 'bad_request', 'Invalid grievance status.');
 			}
-			const nextStatus = statusToDb(status);
+			const nextStatus: GrievanceStatusDb = statusToDb(status);
 			const ts = nowIso();
 			db.prepare('UPDATE grievances SET status = ?, updated_at = ? WHERE id = ?').run(
 				nextStatus,
 				ts,
 				row.id
 			);
+			securityLog('grievance_status_changed', {
+				userId: user.id,
+				role: user.role,
+				resourceId: row.id,
+				newStatus: nextStatus
+			});
 			break;
 		}
 		default: {

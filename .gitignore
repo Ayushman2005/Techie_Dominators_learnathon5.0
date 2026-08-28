@@ -36,3 +36,13 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Security — private keys and credentials must never be committed
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials.*
+.env.local
+secrets/
