@@ -16,7 +16,7 @@
  * Each test uses an isolated in-memory database and temp upload directory.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -434,6 +434,92 @@ describe('HostelGrievance Security Tests', () => {
 				body: form
 			});
 			expect(res.status).toBe(409);
+		});
+
+		it('stores uploaded picture in both the database and the uploads folder on grievance creation', async () => {
+			const { cookie } = await login(app, 'student@example.test', 'student123');
+			const form = new FormData();
+			form.append('title', 'Ceiling paint peeling in room');
+			form.append('category', 'Room');
+			form.append('description', 'Ceiling paint is peeling off heavily after monsoon rain.');
+			form.append('file', new File([PNG], 'paint-peel.png', { type: 'image/png' }));
+
+			const res = await app.request('/api/grievances', {
+				method: 'POST',
+				headers: { Cookie: cookie },
+				body: form
+			});
+			expect(res.status).toBe(201);
+			const json = await res.json();
+			const grievanceId = json.data.id;
+			const attId = json.data.attachments[0].id;
+
+			// Verify in SQLite hostel.db
+			const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(attId) as {
+				id: string;
+				stored_filename: string;
+				data: Buffer;
+			};
+			expect(row).toBeDefined();
+			expect(row.data).toBeDefined();
+			expect(Buffer.from(row.data).equals(PNG)).toBe(true);
+
+			// Verify in uploads folder on disk
+			const uploadPath = join(dir, 'uploads', row.stored_filename);
+			expect(existsSync(uploadPath)).toBe(true);
+			const diskBytes = readFileSync(uploadPath);
+			expect(diskBytes.equals(PNG)).toBe(true);
+		});
+
+		it('stores uploaded picture in both the database and the uploads folder on attachment upload', async () => {
+			const { cookie } = await login(app, 'student@example.test', 'student123');
+			const form = new FormData();
+			form.append('file', new File([JPEG], 'tap-detail.jpg', { type: 'image/jpeg' }));
+
+			const res = await app.request('/api/grievances/GRV-0001/attachments', {
+				method: 'POST',
+				headers: { Cookie: cookie },
+				body: form
+			});
+			expect(res.status).toBe(201);
+			const json = await res.json();
+			const attId = json.data.id;
+
+			// Verify in SQLite hostel.db
+			const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(attId) as {
+				id: string;
+				stored_filename: string;
+				data: Buffer;
+			};
+			expect(row).toBeDefined();
+			expect(row.data).toBeDefined();
+			expect(Buffer.from(row.data).equals(JPEG)).toBe(true);
+
+			// Verify in uploads folder on disk
+			const uploadPath = join(dir, 'uploads', row.stored_filename);
+			expect(existsSync(uploadPath)).toBe(true);
+			const diskBytes = readFileSync(uploadPath);
+			expect(diskBytes.equals(JPEG)).toBe(true);
+		});
+
+		it('serves attachment from database fallback if disk file is removed', async () => {
+			const { cookie } = await login(app, 'student@example.test', 'student123');
+			// att-1 is seeded
+			const row = db.prepare('SELECT stored_filename FROM attachments WHERE id = ?').get('att-1') as {
+				stored_filename: string;
+			};
+			const diskFile = join(dir, 'uploads', row.stored_filename);
+			expect(existsSync(diskFile)).toBe(true);
+
+			// Delete file from disk to simulate missing disk storage
+			unlinkSync(diskFile);
+			expect(existsSync(diskFile)).toBe(false);
+
+			// Request attachment download — should serve from database BLOB
+			const res = await app.request('/api/attachments/att-1', { headers: { Cookie: cookie } });
+			expect(res.status).toBe(200);
+			const bytes = Buffer.from(await res.arrayBuffer());
+			expect(bytes.equals(JPEG)).toBe(true);
 		});
 	});
 

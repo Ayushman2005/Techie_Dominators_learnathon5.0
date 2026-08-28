@@ -50,7 +50,16 @@ attachmentRoutes.get('/:id', (c) => {
 	// CRITICAL: authorize against the grievance owner — students only see their own
 	assertCanViewGrievance(user, grievanceRow);
 
-	const bytes = readStoredFile(c.get('uploadsDir'), attachmentRow.stored_filename);
+	let bytes: Buffer | Uint8Array;
+	try {
+		bytes = readStoredFile(c.get('uploadsDir'), attachmentRow.stored_filename);
+	} catch {
+		if (attachmentRow.data) {
+			bytes = attachmentRow.data;
+		} else {
+			throw new HttpError(404, 'not_found', 'Attachment file was not found.');
+		}
+	}
 
 	// Force download (not inline) to prevent the browser from executing or rendering
 	// potentially malicious content as if it were a trusted resource

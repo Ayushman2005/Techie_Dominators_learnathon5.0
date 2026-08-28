@@ -88,6 +88,7 @@ export interface AttachmentRow {
 	stored_filename: string;
 	mime_type: string;
 	size_bytes: number;
+	data?: Buffer | Uint8Array | null;
 	created_at: string;
 }
 

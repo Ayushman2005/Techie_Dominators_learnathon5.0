@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS attachments (
   stored_filename TEXT NOT NULL,
   mime_type TEXT NOT NULL,
   size_bytes INTEGER NOT NULL,
+  data BLOB,
   created_at TEXT NOT NULL
 );
 
@@ -56,4 +57,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 export function applySchema(db: Database): void {
 	db.exec('PRAGMA foreign_keys = ON;');
 	db.exec(SCHEMA_SQL);
+
+	// Auto-migrate existing attachments table if data column is missing
+	const cols = db.prepare(`PRAGMA table_info(attachments)`).all() as { name: string }[];
+	if (cols.length > 0 && !cols.some((c) => c.name === 'data')) {
+		db.exec('ALTER TABLE attachments ADD COLUMN data BLOB;');
+	}
 }

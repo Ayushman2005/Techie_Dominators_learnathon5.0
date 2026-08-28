@@ -250,8 +250,8 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 	];
 
 	const insertAttachment = db.prepare(
-		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, created_at)
-     VALUES (@id, @grievance_id, @original_filename, @stored_filename, @mime_type, @size_bytes, @created_at)`
+		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, data, created_at)
+     VALUES (@id, @grievance_id, @original_filename, @stored_filename, @mime_type, @size_bytes, @data, @created_at)`
 	);
 
 	db.transaction(() => {
@@ -304,6 +304,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 				stored_filename: stored,
 				mime_type: file.mime_type,
 				size_bytes: file.bytes.byteLength,
+				data: file.bytes,
 				created_at: file.created_at
 			});
 		}
