@@ -127,11 +127,6 @@ userRoutes.get('/stats', (c) => {
 	return c.json({ data: countUsersByRole(db) });
 });
 
-/**
- * GET /api/users/wardens
- *
- * Helper to fetch all active wardens for dropdown selection when creating/editing students.
- */
 userRoutes.get('/wardens', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -142,14 +137,6 @@ userRoutes.get('/wardens', (c) => {
 	return c.json({ data: wardens.map((w) => assembleUser(db, w)) });
 });
 
-/**
- * GET /api/users
- *
- * List users with strict RBAC:
- * - Admin: Can list all users, or filter by role (?role=student|warden|admin)
- * - Warden: Can ONLY list students assigned to that warden
- * - Student: 403 Forbidden
- */
 userRoutes.get('/', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -167,14 +154,8 @@ userRoutes.get('/', (c) => {
 
 	let users: UserRow[];
 	if (user.role === 'warden') {
-		// Wardens are strictly restricted to students in their assigned hostel
-		if (!user.hostel_id) {
-			users = []; // No hostel assigned means no students
-		} else {
-			users = listUsers(db, 'student', { hostelId: user.hostel_id });
-		}
+		users = listUsers(db, 'student', user.id);
 	} else {
-		// Admins can query any role or all
 		users = listUsers(db, roleParam);
 	}
 
@@ -183,14 +164,6 @@ userRoutes.get('/', (c) => {
 	});
 });
 
-/**
- * POST /api/users
- *
- * Create a new user account:
- * - Admin: Can create student, warden, or admin accounts.
- * - Warden: Can ONLY create student accounts (automatically assigned to themselves).
- * - Student: 403 Forbidden.
- */
 userRoutes.post('/', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -253,7 +226,6 @@ userRoutes.post('/', async (c) => {
 		throw new HttpError(400, 'bad_request', 'Role must be student, warden, or admin.');
 	}
 
-	// RBAC hierarchy enforcement
 	if (user.role === 'warden') {
 		if (role !== 'student') {
 			securityLog('authorization_failure', {
@@ -263,19 +235,16 @@ userRoutes.post('/', async (c) => {
 			});
 			throw new HttpError(403, 'unauthorized', 'Wardens can only create student accounts.');
 		}
-		// When a warden creates a student, that student is automatically assigned to this warden
 		wardenId = user.id;
 		// They are also placed in the warden's hostel
 		hostelId = user.hostel_id;
 	}
 
-	// Duplicate email check
 	const existingEmail = findUserByEmail(db, email);
 	if (existingEmail) {
 		throw new HttpError(409, 'conflict', 'An account with this email already exists.');
 	}
 
-	// Student specific validations
 	if (role === 'student') {
 		if (!rollNo) {
 			throw new HttpError(400, 'bad_request', 'Student ID / Roll number is required for students.');
@@ -295,7 +264,6 @@ userRoutes.post('/', async (c) => {
 		}
 	}
 
-	// Warden specific validations
 	if (role === 'warden') {
 		if (!empId) {
 			throw new HttpError(400, 'bad_request', 'Employee ID is required for wardens.');
@@ -355,14 +323,6 @@ userRoutes.post('/', async (c) => {
 	return c.json({ data: assembleUser(db, newUser) }, 201);
 });
 
-/**
- * PATCH /api/users/:id
- *
- * Update an existing user:
- * - Admin: Can modify any user.
- * - Warden: Can ONLY modify students assigned to that warden.
- * - Student: 403 Forbidden.
- */
 userRoutes.patch('/:id', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -377,7 +337,6 @@ userRoutes.patch('/:id', async (c) => {
 		throw new HttpError(404, 'not_found', 'User not found.');
 	}
 
-	// RBAC hierarchy check
 	if (targetUser.role === 'admin' && user.role !== 'admin') {
 		recordAuditLog(c, db, {
 			eventType: 'auth.unauthorized',
@@ -579,14 +538,6 @@ userRoutes.patch('/:id', async (c) => {
 	return c.json({ data: assembleUser(db, updated) });
 });
 
-/**
- * DELETE /api/users/:id
- *
- * Delete a user:
- * - Admin: Can delete students, wardens, and other admins (except cannot self-delete).
- * - Warden: Can ONLY delete students (cannot delete wardens or admins).
- * - Student: 403 Forbidden.
- */
 userRoutes.delete('/:id', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -601,12 +552,10 @@ userRoutes.delete('/:id', (c) => {
 		throw new HttpError(404, 'not_found', 'User not found.');
 	}
 
-	// Prevent self deletion
 	if (targetUser.id === user.id) {
 		throw new HttpError(400, 'bad_request', 'You cannot delete your own account while logged in.');
 	}
 
-	// RBAC hierarchy check
 	if (targetUser.role === 'admin' && user.role !== 'admin') {
 		recordAuditLog(c, db, {
 			eventType: 'auth.unauthorized',
@@ -640,20 +589,22 @@ userRoutes.delete('/:id', (c) => {
 	}
 
 	// SECURITY FIX: Warden can only delete students assigned to them
-	if (user.role === 'warden' && targetUser.role === 'student' && targetUser.warden_id !== user.id) {
-		recordAuditLog(c, db, {
-			eventType: 'auth.unauthorized',
-			action: 'Warden attempted to delete a student assigned to another warden',
-			actorId: user.id,
-			actorName: user.name,
-			actorEmail: user.email,
-			actorRole: user.role,
-			targetId: targetUser.id,
-			targetType: 'user',
-			details: { reason: 'warden_mismatch_delete' },
-			status: 'warning'
-		});
-		throw new HttpError(403, 'unauthorized', 'You can only delete students assigned to you.');
+	if (user.role === 'warden') {
+		if (targetUser.role !== 'student' || targetUser.warden_id !== user.id) {
+			recordAuditLog(c, db, {
+				eventType: 'auth.unauthorized',
+				action: 'Warden attempted to delete a student assigned to another warden',
+				actorId: user.id,
+				actorName: user.name,
+				actorEmail: user.email,
+				actorRole: user.role,
+				targetId: targetUser.id,
+				targetType: 'user',
+				details: { reason: 'warden_mismatch_delete' },
+				status: 'warning'
+			});
+			throw new HttpError(403, 'unauthorized', 'You can only delete students assigned to you.');
+		}
 	}
 
 	deleteUser(db, targetId, c.get('uploadsDir'));

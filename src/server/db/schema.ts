@@ -147,7 +147,6 @@ export function applySchema(db: Database): void {
 	db.exec('PRAGMA foreign_keys = ON;');
 	db.exec(TABLES_SQL);
 
-	// Auto-migrate existing users table if columns are missing BEFORE creating indexes on those columns
 	const userCols = db.prepare(`PRAGMA table_info(users)`).all() as { name: string }[];
 	if (userCols.length > 0) {
 		if (!userCols.some((c) => c.name === 'roll_no')) {
@@ -175,7 +174,6 @@ export function applySchema(db: Database): void {
 		}
 	}
 
-	// Auto-migrate existing attachments table if data column is missing
 	const cols = db.prepare(`PRAGMA table_info(attachments)`).all() as { name: string }[];
 	if (cols.length > 0 && !cols.some((c) => c.name === 'data')) {
 		db.exec('ALTER TABLE attachments ADD COLUMN data BLOB;');

@@ -169,17 +169,20 @@ export function requireGrievance(db: Database, id: string): GrievanceRow {
 export function listUsers(
 	db: Database,
 	role?: Role,
-	filterScope?: { wardenId?: string; hostelId?: string | null }
+	filterScope?: { wardenId?: string; hostelId?: string | null } | string
 ): UserRow[] {
-	if (role === 'student' && filterScope?.hostelId) {
-		return db
-			.prepare('SELECT * FROM users WHERE role = ? AND hostel_id = ? ORDER BY created_at DESC')
-			.all(role, filterScope.hostelId) as UserRow[];
-	}
-	if (role === 'student' && filterScope?.wardenId) {
+	const wardenId = typeof filterScope === 'string' ? filterScope : filterScope?.wardenId;
+	const hostelId = typeof filterScope === 'object' ? filterScope?.hostelId : undefined;
+
+	if (role === 'student' && wardenId) {
 		return db
 			.prepare('SELECT * FROM users WHERE role = ? AND warden_id = ? ORDER BY created_at DESC')
-			.all(role, filterScope.wardenId) as UserRow[];
+			.all(role, wardenId) as UserRow[];
+	}
+	if (role === 'student' && hostelId) {
+		return db
+			.prepare('SELECT * FROM users WHERE role = ? AND hostel_id = ? ORDER BY created_at DESC')
+			.all(role, hostelId) as UserRow[];
 	}
 	if (role) {
 		return db.prepare('SELECT * FROM users WHERE role = ? ORDER BY created_at DESC').all(role) as UserRow[];
@@ -288,7 +291,6 @@ export function updateUser(
 }
 
 export function deleteUser(db: Database, id: string, uploadsDir: string = DEFAULT_UPLOADS_DIR): void {
-	// First clean up any attachments stored on disk if needed, cascading foreign keys delete db rows
 	const grievances = db.prepare('SELECT id FROM grievances WHERE student_id = ?').all(id) as { id: string }[];
 	for (const g of grievances) {
 		deleteGrievance(db, g.id, uploadsDir);
@@ -304,19 +306,43 @@ export function deleteGrievance(db: Database, id: string, uploadsDir: string = D
 	db.prepare('DELETE FROM grievances WHERE id = ?').run(id);
 }
 
-export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow, db?: Database): void {
+export function assertCanViewGrievance(
+	first: SessionUser | Database,
+	second: GrievanceRow | SessionUser,
+	third?: Database | GrievanceRow
+): void {
+	let user: SessionUser;
+	let row: GrievanceRow;
+	let db: Database | undefined;
+
+	if ('role' in (first as SessionUser)) {
+		user = first as SessionUser;
+		row = second as GrievanceRow;
+		db = third as Database | undefined;
+	} else {
+		db = first as Database;
+		user = second as SessionUser;
+		row = third as GrievanceRow;
+	}
+
 	switch (user.role) {
 		case 'admin':
 			// Admins have unrestricted visibility over all grievances
 			return;
 		case 'warden': {
-			// Wardens are scoped to students in their hostel.
-			// If no db is passed (legacy call), fall through to unrestricted access
-			// for backward-compatibility; pass db wherever possible.
 			if (db) {
 				const student = findUserById(db, row.student_id);
-				if (!student || student.hostel_id !== user.hostel_id) {
-					throw new HttpError(403, 'unauthorized', 'You cannot access this grievance.');
+				if (
+					!student ||
+					(student.warden_id
+						? student.warden_id !== user.id
+						: user.hostel_id && student.hostel_id !== user.hostel_id)
+				) {
+					throw new HttpError(
+						403,
+						'unauthorized',
+						'You cannot access grievances for students not assigned to you.'
+					);
 				}
 			}
 			return;

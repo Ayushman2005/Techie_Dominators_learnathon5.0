@@ -1,7 +1,3 @@
-/**
- * HTTP client for the Hono API. Implements the same service interfaces as the mock layer.
- * Swap `$lib/services/mock` imports to `$lib/services` (this module) once the API is running.
- */
 import type {
 	AuthService,
 	CommentService,
@@ -86,7 +82,6 @@ class ApiAuthService implements AuthService {
 		try {
 			localStorage.setItem(SESSION_KEY, JSON.stringify(user));
 		} catch {
-			/* ignore */
 		}
 		return { ok: true, user };
 	}
@@ -96,7 +91,6 @@ class ApiAuthService implements AuthService {
 		try {
 			localStorage.removeItem(SESSION_KEY);
 		} catch {
-			/* ignore */
 		}
 		await apiFetch('/api/logout', { method: 'POST', credentials: 'include' });
 	}

@@ -104,7 +104,6 @@
 {:else if error}
 	<ErrorState message={error} onRetry={load} />
 {:else}
-	<!-- Grievance metrics -->
 	<h2 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">Grievance Overview</h2>
 	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		<StatCard label="Total Grievances" value={grievances.length} href="/admin/grievances" />
@@ -113,7 +112,6 @@
 		<StatCard label="Resolved" value={resolvedCount} href="/admin/grievances" />
 	</div>
 
-	<!-- User account metrics -->
 	<h2 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground mt-8 mb-3">User Distribution</h2>
 	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		<Card class="bg-card">
@@ -163,9 +161,7 @@
 		</Card>
 	</div>
 
-	<!-- 2-Column Overview: Grievances & Live Audit Stream -->
 	<div class="grid gap-6 lg:grid-cols-2 mt-8">
-		<!-- Recent grievances -->
 		<Card>
 			<CardHeader class="flex-row items-center justify-between pb-3">
 				<div>
@@ -210,7 +206,6 @@
 			</CardContent>
 		</Card>
 
-		<!-- Live System Audit Trail -->
 		<Card>
 			<CardHeader class="flex-row items-center justify-between pb-3">
 				<div>

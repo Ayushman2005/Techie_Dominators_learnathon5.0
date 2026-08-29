@@ -4,13 +4,11 @@ import type { Database } from 'better-sqlite3';
 import { hashPassword } from '../auth/passwords.ts';
 import { ensureUploadsDir, newStoredName } from '../storage/attachments.ts';
 
-/** 1×1 PNG */
 const PNG = Buffer.from(
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
 	'base64'
 );
 
-/** Minimal JPEG */
 const JPEG = Buffer.from(
 	'/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAG/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPwB//9k=',
 	'base64'

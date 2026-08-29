@@ -25,17 +25,6 @@ export type CreateAppOptions = {
 	uploadsDir: string;
 };
 
-/**
- * Resolve the allowed CORS origins from environment.
- *
- * In production: set HOSTEL_ALLOWED_ORIGINS to a comma-separated list of
- * trusted frontend origins, e.g. "https://hostelgrievance.youruni.edu"
- *
- * In development: defaults to the local Vite dev server.
- *
- * NEVER use wildcard (*) with credentials — this allows any site to make
- * credentialed cross-origin requests on behalf of your authenticated users.
- */
 function getAllowedOrigins(): string[] {
 	const env = process.env.HOSTEL_ALLOWED_ORIGINS;
 	if (env) {
@@ -44,7 +33,6 @@ function getAllowedOrigins(): string[] {
 			.map((o) => o.trim())
 			.filter(Boolean);
 	}
-	// Development default — only localhost is trusted
 	return ['http://localhost:5173', 'http://127.0.0.1:5173'];
 }
 
@@ -52,20 +40,12 @@ export function createApp(options: CreateAppOptions) {
 	const app = new Hono<AppEnv>();
 	const allowedOrigins = getAllowedOrigins();
 
-	// Inject per-request dependencies
 	app.use('*', async (c, next) => {
 		c.set('db', options.db);
 		c.set('uploadsDir', options.uploadsDir);
 		await next();
 	});
 
-	/**
-	 * CORS: Restrict to explicitly configured trusted origins.
-	 * credentials: true is safe here because origins are explicitly allowlisted.
-	 *
-	 * The origin callback returns the request origin only if it appears in our
-	 * allowlist — otherwise returns undefined which causes CORS to be denied.
-	 */
 	app.use(
 		'/api/*',
 		cors({
@@ -80,26 +60,6 @@ export function createApp(options: CreateAppOptions) {
 		})
 	);
 
-	/**
-	 * Security headers applied to all API responses.
-	 *
-	 * - X-Content-Type-Options: Prevents MIME-type sniffing; browsers must use
-	 *   the declared content-type. Critical for uploaded file serving.
-	 *
-	 * - X-Frame-Options: Legacy framing protection (for older browsers).
-	 *   CSP frame-ancestors is the modern equivalent.
-	 *
-	 * - Referrer-Policy: Prevents leaking the full URL (including grievance IDs)
-	 *   in the Referer header to third-party origins.
-	 *
-	 * - Content-Security-Policy: For API responses, disallow all resource loading.
-	 *   The frontend SvelteKit app sets its own CSP separately.
-	 *
-	 * - Permissions-Policy: Disable features not needed by a grievance API.
-	 *
-	 * Note: Strict-Transport-Security (HSTS) should be set by the reverse proxy
-	 * (nginx/caddy) that terminates TLS, not by the application server.
-	 */
 	app.use('/api/*', async (c, next) => {
 		await next();
 		c.header('X-Content-Type-Options', 'nosniff');

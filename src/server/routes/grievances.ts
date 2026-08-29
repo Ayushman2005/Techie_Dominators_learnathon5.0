@@ -41,7 +41,6 @@ import { commentRateLimit, createGrievanceRateLimit } from '../middleware/rateli
 import { recordAuditLog } from '../audit.ts';
 import { MAX_ATTACHMENTS_PER_GRIEVANCE } from '../config.ts';
 
-// Text field limits to prevent abuse and oversized inputs
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 5000;
 const MAX_COMMENT_LENGTH = 2000;
@@ -181,7 +180,6 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 	availableTime = availableTime.trim();
 	const parsedPriority = parsePriority(priority);
 
-	// Input validation with length limits
 	if (title.length < 5) {
 		throw new HttpError(400, 'bad_request', 'Title must be at least 5 characters.');
 	}
@@ -203,7 +201,6 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 	}
 	const parsedCategory = parseCategory(category);
 
-	// student_id comes from the validated server-side session, never from the client
 	const id = nextGrievanceId(db);
 	const ts = nowIso();
 	db.prepare(
@@ -230,12 +227,11 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 
 	if (upload) {
 		const bytes = await bufferFromUpload(upload);
-		// Stored filename is always server-generated — never user-controlled
 		const stored = newStoredName(upload.type);
 		writeStoredFile(uploadsDir, stored, bytes);
 		db.prepare(
 			`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, data, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
 		).run(
 			nextAttachmentId(db),
 			id,
@@ -243,7 +239,6 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 			stored,
 			upload.type,
 			bytes.byteLength,
-			bytes,
 			ts
 		);
 		recordAuditLog(c, db, {
@@ -267,14 +262,6 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 	return c.json({ data: assembleGrievance(db, requireGrievance(db, id)) }, 201);
 });
 
-/**
- * GET /api/grievances/:id/comments
- *
- * Returns comments for a grievance.
- * CRITICAL FIX: assertCanViewGrievance enforces that students can only view
- * comments on their own grievances. Without this check, IDOR allowed any
- * authenticated student to read any grievance's comments.
- */
 grievanceRoutes.get('/:id/comments', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -291,14 +278,6 @@ grievanceRoutes.get('/:id/comments', (c) => {
 	return c.json({ data: comments });
 });
 
-/**
- * POST /api/grievances/:id/comments
- *
- * Add a comment to a grievance.
- * - Students may only comment on their own grievances
- * - Wardens may comment on any grievance (part of their review workflow)
- * Rate limited per user.
- */
 grievanceRoutes.post('/:id/comments', commentRateLimit, async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -355,12 +334,6 @@ grievanceRoutes.post('/:id/comments', commentRateLimit, async (c) => {
 	return c.json({ data: toPublicComment(commentRow, toPublicUser(author)) }, 201);
 });
 
-/**
- * POST /api/grievances/:id/attachments
- *
- * Upload an attachment to an existing grievance.
- * Only the student owner of the grievance may attach files.
- */
 grievanceRoutes.post('/:id/attachments', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -402,15 +375,14 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 	}
 
 	const bytes = await bufferFromUpload(upload);
-	// Always generate a random stored filename — never use the user-supplied name as the stored path
 	const stored = newStoredName(upload.type);
 	const ts = nowIso();
 	writeStoredFile(c.get('uploadsDir'), stored, bytes);
 	const id = nextAttachmentId(db);
 	db.prepare(
 		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, data, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	).run(id, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, bytes, ts);
+     VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
+	).run(id, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, ts);
 	touchGrievance(db, row.id, ts);
 
 	recordAuditLog(c, db, {
@@ -434,14 +406,6 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 	return c.json({ data: toPublicAttachment(saved) }, 201);
 });
 
-/**
- * POST /api/grievances/:id/review
- *
- * Submit a student resolution review with a photo of the completed solution.
- * - Only the student who created the grievance can submit a review.
- * - The grievance MUST be in 'resolved' status.
- * - A photo/picture of the solution is mandatory.
- */
 grievanceRoutes.post('/:id/review', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -549,11 +513,6 @@ grievanceRoutes.post('/:id/review', async (c) => {
 	return c.json({ data: assembleGrievance(db, requireGrievance(db, row.id)) }, 201);
 });
 
-/**
- * GET /api/grievances/:id/review
- *
- * Fetch the resolution review for a grievance.
- */
 grievanceRoutes.get('/:id/review', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -563,15 +522,6 @@ grievanceRoutes.get('/:id/review', (c) => {
 	return c.json({ data: grv.review ?? null });
 });
 
-/**
- * GET /api/grievances/:id
-
- *
- * Returns a single grievance with full details.
- * CRITICAL FIX: assertCanViewGrievance enforces that students can only view
- * their own grievances. Previously this check was missing despite the helper
- * function existing in the codebase — a classic "dead code IDOR" bug.
- */
 grievanceRoutes.get('/:id', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -581,18 +531,11 @@ grievanceRoutes.get('/:id', (c) => {
 	return c.json({ data: assembleGrievance(db, row) });
 });
 
-/**
- * PATCH /api/grievances/:id
- *
- * Update a grievance. Role-based authorization:
- * - Students: may edit content (title/description/category) of their OWN open grievances only
- *   CRITICAL FIX: added ownership check (row.student_id !== user.id) — previously missing
- * - Wardens: may only change status (not content)
- */
 grievanceRoutes.patch('/:id', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
+	assertCanViewGrievance(db, user, row);
 
 	let body: unknown;
 	try {
@@ -617,7 +560,6 @@ grievanceRoutes.patch('/:id', async (c) => {
 
 	switch (user.role) {
 		case 'student': {
-			// CRITICAL FIX: Ownership check — student can only edit their own grievances
 			if (row.student_id !== user.id) {
 				recordAuditLog(c, db, {
 					eventType: 'auth.unauthorized',
@@ -636,7 +578,6 @@ grievanceRoutes.patch('/:id', async (c) => {
 			if (row.status === 'resolved') {
 				throw new HttpError(409, 'conflict', 'Resolved grievances cannot be edited.');
 			}
-			// Students cannot change status — only wardens can
 			if (wantsStatus) {
 				throw new HttpError(403, 'unauthorized', 'Students cannot change grievance status.');
 			}
@@ -833,11 +774,6 @@ grievanceRoutes.patch('/:id', async (c) => {
 	return c.json({ data: assembleGrievance(db, requireGrievance(db, row.id)) });
 });
 
-/**
- * DELETE /api/grievances/:id
- *
- * Delete a grievance (Admin only).
- */
 grievanceRoutes.delete('/:id', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);

@@ -71,7 +71,6 @@
 	{/snippet}
 </PageHeader>
 
-<!-- Student Profile Info Bar -->
 {#if user}
 	<div class="mb-6 flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3 text-xs shadow-sm">
 		<div class="flex items-center gap-1.5 font-medium text-foreground">

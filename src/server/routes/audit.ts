@@ -7,11 +7,6 @@ import type { AuditLogRole, AuditLogStatus } from '../types/index.ts';
 
 export const auditRoutes = new Hono<AppEnv>();
 
-/**
- * GET /api/audit-logs/stats
- *
- * Aggregated audit activity metrics for admin dashboards. Admin-only.
- */
 auditRoutes.get('/stats', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -21,11 +16,15 @@ auditRoutes.get('/stats', (c) => {
 	return c.json({ data: stats });
 });
 
-/**
- * GET /api/audit-logs/export
- *
- * Export all matching audit logs as CSV or JSON for compliance and reporting. Admin-only.
- */
+function sanitizeCsvCell(value: unknown): string {
+	if (value === null || value === undefined) return '""';
+	let str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+	if (/^[=+\-@\t\r]/.test(str)) {
+		str = `'${str}`;
+	}
+	return `"${str.replaceAll('"', '""')}"`;
+}
+
 auditRoutes.get('/export', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -37,7 +36,6 @@ auditRoutes.get('/export', (c) => {
 	const status = c.req.query('status') as AuditLogStatus | 'all' | undefined;
 	const search = c.req.query('search');
 
-	// Limit to 5000 records for export
 	const rows = listAuditLogs(db, {
 		role: role || undefined,
 		eventType: eventType || undefined,
@@ -67,20 +65,19 @@ auditRoutes.get('/export', (c) => {
 
 		const csvLines = [headers.join(',')];
 		for (const log of logs) {
-			const detailsStr = log.details ? JSON.stringify(log.details).replaceAll('"', '""') : '';
 			const row = [
-				`"${log.id}"`,
-				`"${log.createdAt}"`,
-				`"${log.actorRole}"`,
-				`"${(log.actorName || '').replaceAll('"', '""')}"`,
-				`"${(log.actorEmail || '').replaceAll('"', '""')}"`,
-				`"${(log.action || '').replaceAll('"', '""')}"`,
-				`"${log.eventType}"`,
-				`"${log.targetId || ''}"`,
-				`"${log.targetType || ''}"`,
-				`"${log.status}"`,
-				`"${log.ipAddress || ''}"`,
-				`"${detailsStr}"`
+				sanitizeCsvCell(log.id),
+				sanitizeCsvCell(log.createdAt),
+				sanitizeCsvCell(log.actorRole),
+				sanitizeCsvCell(log.actorName || ''),
+				sanitizeCsvCell(log.actorEmail || ''),
+				sanitizeCsvCell(log.action || ''),
+				sanitizeCsvCell(log.eventType),
+				sanitizeCsvCell(log.targetId || ''),
+				sanitizeCsvCell(log.targetType || ''),
+				sanitizeCsvCell(log.status),
+				sanitizeCsvCell(log.ipAddress || ''),
+				sanitizeCsvCell(log.details ?? '')
 			];
 			csvLines.push(row.join(','));
 		}
@@ -93,12 +90,6 @@ auditRoutes.get('/export', (c) => {
 	return c.json({ data: logs });
 });
 
-/**
- * GET /api/audit-logs
- *
- * List paginated audit logs with search and filtering.
- * Strictly admin-only (enforced via requireAdmin).
- */
 auditRoutes.get('/', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);

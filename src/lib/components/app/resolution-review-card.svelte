@@ -1,5 +1,4 @@
-<script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
+<script lang="ts">	import { Button } from '$lib/components/ui/button/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card/index.js';
@@ -25,7 +24,6 @@
 		onReviewSubmitted?: (updated: Grievance) => void;
 	} = $props();
 
-	// Review submission form state
 	let rating = $state(5);
 	let hoverRating = $state(0);
 	let feedback = $state('');
@@ -114,7 +112,6 @@
 </script>
 
 {#if grievance.review}
-	<!-- DISPLAY EXISTING VERIFIED RESOLUTION REVIEW -->
 	{@const review = grievance.review}
 	<Card class="border">
 		<CardHeader class="pb-3">
@@ -130,7 +127,6 @@
 						</CardDescription>
 					</div>
 				</div>
-				<!-- Star Rating Display -->
 				<div class="flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-md border text-xs">
 					<div class="flex items-center">
 						{#each [1, 2, 3, 4, 5] as star}
@@ -144,12 +140,10 @@
 			</div>
 		</CardHeader>
 		<CardContent class="space-y-4">
-			<!-- Review text -->
 			<div class="bg-muted/40 p-3.5 rounded-lg border text-sm leading-relaxed">
 				<p class="text-foreground whitespace-pre-wrap">{review.feedback}</p>
 			</div>
 
-			<!-- Solution Picture Proof -->
 			{#if review.solutionAttachment}
 				<div>
 					<h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
@@ -187,7 +181,6 @@
 	</Card>
 {:else if grievance.status === 'Resolved'}
 	{#if isOwner}
-		<!-- STUDENT FORM TO SUBMIT RESOLUTION REVIEW -->
 		<Card class="border">
 			<CardHeader class="pb-3">
 				<div class="flex items-center gap-2">
@@ -204,7 +197,6 @@
 			</CardHeader>
 			<CardContent>
 				<form onsubmit={handleSubmit} class="space-y-4">
-					<!-- Star Rating Picker -->
 					<div class="space-y-1.5">
 						<Label class="text-xs font-semibold text-foreground">Satisfaction Rating *</Label>
 						<div class="flex items-center gap-3">
@@ -232,7 +224,6 @@
 						</div>
 					</div>
 
-					<!-- Solution Photo Upload -->
 					<div class="space-y-1.5">
 						<Label for="solution-file" class="text-xs font-semibold text-foreground">
 							Picture of Completed Solution *
@@ -270,7 +261,6 @@
 						{/if}
 					</div>
 
-					<!-- Feedback Textarea -->
 					<div class="space-y-1.5">
 						<Label for="review-feedback" class="text-xs font-semibold text-foreground">
 							Feedback / Review Details *
@@ -292,7 +282,6 @@
 			</CardContent>
 		</Card>
 	{:else}
-		<!-- WARDEN / ADMIN WAITING NOTE -->
 		<Card class="border border-dashed bg-muted/20">
 			<CardContent class="py-4 flex items-center gap-3 text-xs text-muted-foreground">
 				<ClockIcon class="size-4 shrink-0 text-foreground" />
