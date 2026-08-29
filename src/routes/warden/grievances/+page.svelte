@@ -9,12 +9,14 @@
 		TableRow
 	} from '$lib/components/ui/table/index.js';
 	import StatusBadge from '$lib/components/app/status-badge.svelte';
+	import SlaBadge from '$lib/components/app/sla-badge.svelte';
 	import PageHeader from '$lib/components/app/page-header.svelte';
 	import EmptyState from '$lib/components/app/empty-state.svelte';
 	import ErrorState from '$lib/components/app/error-state.svelte';
 	import ListSkeleton from '$lib/components/app/list-skeleton.svelte';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { grievanceService } from '$lib/services';
+	import { getSlaStatus } from '$lib/sla';
 	import type { Grievance } from '$lib/types';
 
 	let grievances = $state<Grievance[]>([]);
@@ -61,6 +63,7 @@
 						<TableHead>Title</TableHead>
 						<TableHead>Category</TableHead>
 						<TableHead>Status</TableHead>
+						<TableHead>SLA</TableHead>
 						<TableHead>Created</TableHead>
 						<TableHead>Updated</TableHead>
 						<TableHead class="text-right"><span class="sr-only">Actions</span></TableHead>
@@ -68,17 +71,27 @@
 				</TableHeader>
 				<TableBody>
 					{#each grievances as g (g.id)}
-						<TableRow>
+						{@const sla = getSlaStatus(g.priority ?? 'medium', g.createdAt, g.status)}
+						<TableRow class={sla.overdue ? 'bg-red-50/50 dark:bg-red-950/10' : ''}>
 							<TableCell class="text-muted-foreground font-mono text-xs">{g.id}</TableCell>
 							<TableCell class="whitespace-nowrap">
 								<span class="font-medium">{g.student.name}</span>
-								<span class="text-muted-foreground block text-xs">{g.student.room ?? '—'}</span>
+								<div class="text-muted-foreground text-[11px] flex items-center gap-1 mt-0.5">
+									{#if g.student.rollNo}
+										<span class="font-mono">Roll: {g.student.rollNo}</span>
+										<span>•</span>
+									{/if}
+									<span>Room: {g.student.room ?? '—'}</span>
+								</div>
 							</TableCell>
 							<TableCell class="max-w-64 truncate font-medium">
 								<a href="/warden/grievances/{g.id}" class="hover:underline">{g.title}</a>
 							</TableCell>
 							<TableCell>{g.category}</TableCell>
 							<TableCell><StatusBadge status={g.status} /></TableCell>
+							<TableCell>
+								<SlaBadge priority={g.priority ?? 'medium'} createdAt={g.createdAt} status={g.status} />
+							</TableCell>
 							<TableCell class="text-muted-foreground whitespace-nowrap">{formatDate(g.createdAt)}</TableCell>
 							<TableCell class="text-muted-foreground whitespace-nowrap">{formatDate(g.updatedAt)}</TableCell>
 							<TableCell class="text-right">

@@ -13,8 +13,11 @@
 	import ResolutionReviewCard from '$lib/components/app/resolution-review-card.svelte';
 	import { commentService, grievanceService } from '$lib/services';
 	import { getSession } from '$lib/stores/auth.svelte';
+	import { getSlaStatus } from '$lib/sla';
+	import SlaBadge from '$lib/components/app/sla-badge.svelte';
 	import type { Grievance } from '$lib/types';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ClockIcon from '@lucide/svelte/icons/clock';
 
 	const grievanceId = $derived(page.params.id ?? '');
 
@@ -89,6 +92,7 @@
 	<ErrorState message={error} onRetry={load} />
 {:else if grievance}
 	{@const g = grievance}
+	{@const sla = getSlaStatus(g.priority ?? 'medium', g.createdAt, g.status)}
 	<PageHeader title={g.title}>
 		{#snippet actions()}
 			<StatusBadge status={g.status} />
@@ -139,6 +143,13 @@
 						<h2 class="mb-1 text-sm font-medium">Description</h2>
 						<p class="text-sm whitespace-pre-line">{grievance.description}</p>
 					</div>
+					{#if grievance.availableTime}
+						<Separator />
+						<div>
+							<h2 class="mb-1 text-sm font-medium text-foreground">Available Time</h2>
+							<p class="text-sm font-medium text-primary bg-primary/10 px-3 py-2 rounded-md">{grievance.availableTime}</p>
+						</div>
+					{/if}
 					{#if grievance.attachments.length > 0}
 						<div>
 							<h2 class="mb-2 text-sm font-medium">Attachments</h2>
@@ -179,6 +190,29 @@
 					<h2 class="text-sm font-medium">Status</h2>
 					<p class="text-muted-foreground mt-2 text-sm">
 						Only the warden can change the status of a grievance. You will see updates here.
+					</p>
+				</CardContent>
+			</Card>
+
+			<!-- SLA / Response-Time Card -->
+			<Card class="py-4">
+				<CardHeader class="pb-3 pt-0">
+					<div class="flex items-center gap-2 mb-2">
+						<ClockIcon class="size-4 text-muted-foreground" />
+						<h2 class="text-sm font-medium">Response SLA</h2>
+					</div>
+					<SlaBadge priority={g.priority ?? 'medium'} createdAt={g.createdAt} status={g.status} />
+				</CardHeader>
+				<CardContent class="px-4 space-y-2">
+					<p class="text-muted-foreground text-xs leading-relaxed">
+						{#if sla.variant === 'resolved'}
+							This grievance has been resolved. Thank you for your patience.
+						{:else if sla.overdue}
+							The expected response window has passed. Your warden has been notified.
+						{:else}
+							Priority: <span class="font-medium capitalize text-foreground">{g.priority ?? 'medium'}</span>.
+							Expected response by <span class="font-medium text-foreground">{new Date(sla.deadlineIso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>.
+						{/if}
 					</p>
 				</CardContent>
 			</Card>

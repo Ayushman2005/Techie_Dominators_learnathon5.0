@@ -23,6 +23,6 @@
 		{/if}
 	</div>
 	{#if actions}
-		<div class="flex shrink-0 items-center gap-2">{@render actions()}</div>
+		<div class="flex w-full sm:w-auto shrink-0 items-center gap-2 mt-2 sm:mt-0">{@render actions()}</div>
 	{/if}
 </div>

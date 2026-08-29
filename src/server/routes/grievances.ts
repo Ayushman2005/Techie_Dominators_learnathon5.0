@@ -3,15 +3,22 @@ import type { AppEnv } from '../env.ts';
 import { requireUser } from '../auth/session.ts';
 import {
 	assembleGrievance,
+	assembleGrievanceSummaries,
 	assertCanViewGrievance,
 	deleteGrievance,
 	findResolutionReviewRow,
 	findUserById,
+	getGrievanceAnalytics,
+	getGrievanceStats,
 	insertResolutionReview,
+	insertStatusHistory,
 	listAllGrievanceRows,
+	listAttachmentRows,
 	listCommentRows,
+	listGrievancesFiltered,
 	listGrievanceRowsForStudent,
 	listGrievanceRowsForWarden,
+	listStatusHistory,
 	nextAttachmentId,
 	nextCommentId,
 	nextGrievanceId,
@@ -20,9 +27,9 @@ import {
 	touchGrievance
 } from '../db/queries.ts';
 import type { CommentRow, AttachmentRow, GrievanceStatusDb } from '../types/index.ts';
-import { toPublicAttachment, toPublicComment, toPublicUser } from '../db/map.ts';
+import { toPublicAttachment, toPublicComment, toPublicUser, toPublicStatusHistory } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
-import { parseCategory, statusToDb, statusToUi } from '../http/status.ts';
+import { parseCategory, parsePriority, statusToDb, statusToUi } from '../http/status.ts';
 import {
 	bufferFromUpload,
 	newStoredName,
@@ -32,6 +39,7 @@ import {
 import { securityLog } from '../logger.ts';
 import { commentRateLimit, createGrievanceRateLimit } from '../middleware/ratelimit.ts';
 import { recordAuditLog } from '../audit.ts';
+import { MAX_ATTACHMENTS_PER_GRIEVANCE } from '../config.ts';
 
 // Text field limits to prevent abuse and oversized inputs
 const MAX_TITLE_LENGTH = 200;
@@ -52,9 +60,9 @@ export const grievanceRoutes = new Hono<AppEnv>();
 /**
  * GET /api/grievances
  *
- * Returns grievances scoped to the authenticated user's role:
- * - Student: only their own grievances (enforced at DB query level)
- * - Warden / Admin: all grievances
+ * Returns paginated, filtered grievances scoped to the authenticated user's role.
+ * Supports: ?status=open|in_progress|resolved|all  ?category=Maintenance|...|all
+ *           ?priority=low|medium|high|urgent|all  ?search=...  ?page=1  ?limit=20
  *
  * The server determines the scope from the validated session — never from
  * a client-supplied parameter.
@@ -62,17 +70,61 @@ export const grievanceRoutes = new Hono<AppEnv>();
 grievanceRoutes.get('/', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
-	let rows;
-	if (user.role === 'admin') {
-		rows = listAllGrievanceRows(db);
-	} else if (user.role === 'warden') {
-		rows = listGrievanceRowsForWarden(db, user.id);
-	} else {
-		rows = listGrievanceRowsForStudent(db, user.id);
-	}
+
+	const status = (c.req.query('status') ?? 'all') as string;
+	const category = (c.req.query('category') ?? 'all') as string;
+	const priority = (c.req.query('priority') ?? 'all') as string;
+	const search = c.req.query('search') ?? '';
+	const page = Math.max(1, Number(c.req.query('page') ?? 1));
+	const limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 20)));
+
+	const filters = { status, category, priority, search, page, limit };
+	const { rows, total } = listGrievancesFiltered(
+		db,
+		{ role: user.role, userId: user.id, hostelId: user.hostel_id },
+		filters
+	);
+
 	return c.json({
-		data: rows.map((row) => assembleGrievance(db, row))
+		data: assembleGrievanceSummaries(db, rows),
+		total,
+		page,
+		limit,
+		totalPages: Math.ceil(total / limit)
 	});
+});
+
+/**
+ * GET /api/grievances/stats
+ *
+ * Summary statistics scoped to the authenticated user's role.
+ * - Student: stats for their own grievances only
+ * - Warden: stats for grievances from their assigned students
+ * - Admin: system-wide stats
+ */
+grievanceRoutes.get('/stats', (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+	const stats = getGrievanceStats(db, { role: user.role, userId: user.id, hostelId: user.hostel_id });
+	return c.json({ data: stats });
+});
+
+/**
+ * GET /api/grievances/analytics
+ *
+ * Admin-only endpoint returning detailed analytics data for the analytics dashboard.
+ * Supports optional ?days=7|30|90|0 (0 = all time, default = 30).
+ */
+grievanceRoutes.get('/analytics', (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+	if (user.role !== 'admin') {
+		throw new HttpError(403, 'unauthorized', 'Only administrators can access analytics.');
+	}
+	const daysParam = c.req.query('days');
+	const days = daysParam !== undefined ? Math.max(0, Number(daysParam)) : 30;
+	const analytics = getGrievanceAnalytics(db, isNaN(days) ? 30 : days);
+	return c.json({ data: analytics });
 });
 
 /**
@@ -94,6 +146,8 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 	let title = '';
 	let category = '';
 	let description = '';
+	let priority = 'medium';
+	let availableTime = '';
 	let upload: File | undefined;
 
 	if (contentType.includes('multipart/form-data')) {
@@ -101,6 +155,8 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 		title = readString(body.title) ?? '';
 		category = readString(body.category) ?? '';
 		description = readString(body.description) ?? '';
+		priority = readString(body.priority) ?? 'medium';
+		availableTime = readString(body.availableTime) ?? '';
 		if (body.file instanceof File) upload = body.file;
 		else if (body.attachment instanceof File) upload = body.attachment;
 	} else {
@@ -116,10 +172,14 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 		title = readString('title' in json ? json.title : undefined) ?? '';
 		category = readString('category' in json ? json.category : undefined) ?? '';
 		description = readString('description' in json ? json.description : undefined) ?? '';
+		priority = readString('priority' in json ? json.priority : undefined) ?? 'medium';
+		availableTime = readString('availableTime' in json ? json.availableTime : undefined) ?? '';
 	}
 
 	title = title.trim();
 	description = description.trim();
+	availableTime = availableTime.trim();
+	const parsedPriority = parsePriority(priority);
 
 	// Input validation with length limits
 	if (title.length < 5) {
@@ -138,15 +198,21 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 			`Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`
 		);
 	}
+	if (availableTime.length === 0) {
+		throw new HttpError(400, 'bad_request', 'Available time must be provided.');
+	}
+	if (availableTime.length > 200) {
+		throw new HttpError(400, 'bad_request', 'Available time description is too long.');
+	}
 	const parsedCategory = parseCategory(category);
 
 	// student_id comes from the validated server-side session, never from the client
 	const id = nextGrievanceId(db);
 	const ts = nowIso();
 	db.prepare(
-		`INSERT INTO grievances (id, student_id, title, category, description, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`
-	).run(id, user.id, title, parsedCategory, description, ts, ts);
+		`INSERT INTO grievances (id, student_id, title, category, description, priority, available_time, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`
+	).run(id, user.id, title, parsedCategory, description, parsedPriority, availableTime, ts, ts);
 
 	recordAuditLog(c, db, {
 		eventType: 'grievance.created',
@@ -217,7 +283,7 @@ grievanceRoutes.get('/:id/comments', (c) => {
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
 	// Authorization: students can only view comments on their own grievances
-	assertCanViewGrievance(user, row);
+	assertCanViewGrievance(user, row, db);
 	const comments = listCommentRows(db, row.id).map((comment) => {
 		const authorRow = findUserById(db, comment.author_id);
 		if (!authorRow) {
@@ -242,7 +308,7 @@ grievanceRoutes.post('/:id/comments', commentRateLimit, async (c) => {
 	const row = requireGrievance(db, c.req.param('id')!);
 
 	// Authorization: students can only comment on their own grievances
-	assertCanViewGrievance(user, row);
+	assertCanViewGrievance(user, row, db);
 
 	let body: unknown;
 	try {
@@ -319,6 +385,16 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 	}
 	if (row.status === 'resolved') {
 		throw new HttpError(409, 'conflict', 'Resolved grievances cannot be edited.');
+	}
+
+	// Enforce attachment count limit
+	const existingAttachments = listAttachmentRows(db, row.id);
+	if (existingAttachments.length >= MAX_ATTACHMENTS_PER_GRIEVANCE) {
+		throw new HttpError(
+			409,
+			'conflict',
+			`This grievance already has the maximum of ${MAX_ATTACHMENTS_PER_GRIEVANCE} attachments.`
+		);
 	}
 
 	const body = await c.req.parseBody();
@@ -440,8 +516,8 @@ grievanceRoutes.post('/:id/review', async (c) => {
 	const attId = nextAttachmentId(db);
 	db.prepare(
 		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, data, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	).run(attId, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, bytes, ts);
+     VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
+	).run(attId, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, ts);
 
 	const revId = nextResolutionReviewId(db);
 	insertResolutionReview(db, {
@@ -485,7 +561,7 @@ grievanceRoutes.get('/:id/review', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
-	assertCanViewGrievance(user, row);
+	assertCanViewGrievance(user, row, db);
 	const grv = assembleGrievance(db, row);
 	return c.json({ data: grv.review ?? null });
 });
@@ -504,7 +580,7 @@ grievanceRoutes.get('/:id', (c) => {
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
 	// CRITICAL: must call this — it throws 403 for students accessing others' grievances
-	assertCanViewGrievance(user, row);
+	assertCanViewGrievance(user, row, db);
 	return c.json({ data: assembleGrievance(db, row) });
 });
 
@@ -637,6 +713,19 @@ grievanceRoutes.patch('/:id', async (c) => {
 				row.id
 			);
 
+			// Record the status change in the structured history table
+			if (nextStatus !== row.status) {
+				insertStatusHistory(db, {
+					grievanceId: row.id,
+					changedById: user.id,
+					changedByName: user.name,
+					changedByRole: user.role,
+					oldStatus: row.status,
+					newStatus: nextStatus,
+					createdAt: ts
+				});
+			}
+
 			recordAuditLog(c, db, {
 				eventType: 'grievance.status_changed',
 				action: `Warden updated status to ${statusToUi(nextStatus)}`,
@@ -705,6 +794,19 @@ grievanceRoutes.patch('/:id', async (c) => {
 			db.prepare(
 				'UPDATE grievances SET title = ?, description = ?, category = ?, status = ?, updated_at = ? WHERE id = ?'
 			).run(adminTitle, adminDescription, adminCategory, nextStatus, ts, row.id);
+
+			// Record the status change in history if it changed
+			if (status !== undefined && nextStatus !== row.status) {
+				insertStatusHistory(db, {
+					grievanceId: row.id,
+					changedById: user.id,
+					changedByName: user.name,
+					changedByRole: user.role,
+					oldStatus: row.status,
+					newStatus: nextStatus,
+					createdAt: ts
+				});
+			}
 
 			recordAuditLog(c, db, {
 				eventType: status !== undefined ? 'grievance.status_changed' : 'grievance.updated',
@@ -779,4 +881,21 @@ grievanceRoutes.delete('/:id', (c) => {
 	});
 
 	return c.json({ ok: true });
+});
+
+/**
+ * GET /api/grievances/:id/history
+ *
+ * Retrieve the status change history for a grievance.
+ */
+grievanceRoutes.get('/:id/history', (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+	const row = requireGrievance(db, c.req.param('id')!);
+	assertCanViewGrievance(user, row, db);
+
+	const historyRows = listStatusHistory(db, row.id);
+	return c.json({
+		data: historyRows.map((h) => toPublicStatusHistory(h))
+	});
 });

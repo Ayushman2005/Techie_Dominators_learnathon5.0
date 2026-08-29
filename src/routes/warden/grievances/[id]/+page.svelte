@@ -146,6 +146,13 @@
 						<h2 class="mb-1 text-sm font-medium">Description</h2>
 						<p class="text-sm whitespace-pre-line">{g.description}</p>
 					</div>
+					{#if g.availableTime}
+						<Separator />
+						<div>
+							<h2 class="mb-1 text-sm font-medium text-foreground">Available Time</h2>
+							<p class="text-sm font-medium text-primary bg-primary/10 px-3 py-2 rounded-md">{g.availableTime}</p>
+						</div>
+					{/if}
 					{#if g.attachments.length > 0}
 						<div>
 							<h2 class="mb-2 text-sm font-medium">Attachments</h2>

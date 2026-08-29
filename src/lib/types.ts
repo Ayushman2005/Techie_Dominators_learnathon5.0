@@ -5,6 +5,12 @@
 
 export type Role = 'student' | 'warden' | 'admin';
 
+export interface Hostel {
+	id: string;
+	name: string;
+	createdAt?: string;
+}
+
 export type GrievanceStatus = 'Open' | 'In Progress' | 'Resolved';
 
 export const GRIEVANCE_STATUSES: readonly GrievanceStatus[] = ['Open', 'In Progress', 'Resolved'];
@@ -34,10 +40,16 @@ export interface User {
 	studentId?: string | null;
 	/** For wardens / admins: unique employee staff ID. */
 	empId?: string | null;
+	/** Contact phone number. */
+	phone?: string | null;
+	/** Emergency contact number. */
+	emergencyContact?: string | null;
 	/** For students: assigned warden's user ID (1-to-1 mapping). */
 	wardenId?: string | null;
 	/** For students: populated assigned warden profile. */
 	warden?: User | null;
+	/** The hostel this user belongs to */
+	hostelId?: string | null;
 	createdAt?: string;
 }
 
@@ -51,6 +63,7 @@ export interface CreateUserInput {
 	rollNo?: string;
 	empId?: string;
 	wardenId?: string;
+	hostelId?: string;
 }
 
 export interface UpdateUserInput {
@@ -63,6 +76,7 @@ export interface UpdateUserInput {
 	rollNo?: string;
 	empId?: string;
 	wardenId?: string;
+	hostelId?: string;
 }
 
 export interface Attachment {
@@ -101,9 +115,11 @@ export interface Grievance {
 	description: string;
 	category: GrievanceCategory;
 	status: GrievanceStatus;
+	priority?: string;
 	studentId: string;
 	/** Denormalized for warden list display. */
 	student: User;
+	availableTime?: string | null;
 	createdAt: string; // ISO timestamp
 	updatedAt: string; // ISO timestamp
 	attachments: Attachment[];
@@ -150,6 +166,23 @@ export interface AuditLogStats {
 	todayEvents: number;
 }
 
+export interface Notice {
+	id: string;
+	author_id: string;
+	author_name: string;
+	author_role: Role;
+	title: string;
+	body: string;
+	hostel_id: string | null;
+	created_at: string;
+}
+
+export interface CreateNoticeInput {
+	title: string;
+	body: string;
+	hostel_id: string | null;
+}
+
 export interface AuditLogFilters {
 	role?: AuditLogRole | 'all';
 	eventType?: string;
@@ -167,3 +200,33 @@ export interface AuditLogListResponse {
 	totalPages: number;
 }
 
+export interface MonthlyVolume {
+	month: string; // "YYYY-MM"
+	count: number;
+}
+
+export interface WardenPerformance {
+	wardenId: string;
+	wardenName: string;
+	wardenEmpId: string | null;
+	totalGrievances: number;
+	resolved: number;
+	open: number;
+	inProgress: number;
+	resolutionRatePct: number;
+	avgResolutionHours: number | null;
+}
+
+export interface GrievanceAnalytics {
+	totalGrievances: number;
+	resolved: number;
+	open: number;
+	inProgress: number;
+	resolutionRatePct: number;
+	avgResolutionHours: number | null;
+	overdueCount: number;
+	byCategory: Record<string, number>;
+	byPriority: Record<string, number>;
+	monthlyVolume: MonthlyVolume[];
+	wardenPerformance: WardenPerformance[];
+}

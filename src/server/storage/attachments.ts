@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { ALLOWED_ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES } from '../config.ts';
+import { ALLOWED_ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_MB } from '../config.ts';
 import { HttpError } from '../http/errors.ts';
 import { securityLog } from '../logger.ts';
 
@@ -9,7 +9,8 @@ const MIME_EXTENSION: Record<string, string> = {
 	'image/jpeg': '.jpg',
 	'image/png': '.png',
 	'image/gif': '.gif',
-	'image/webp': '.webp'
+	'image/webp': '.webp',
+	'application/pdf': '.pdf'
 };
 
 /**
@@ -33,7 +34,9 @@ const MAGIC_BYTES: Array<{
 	{ mime: 'image/gif', signature: [0x47, 0x49, 0x46, 0x38, 0x37, 0x61] },
 	{ mime: 'image/gif', signature: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61] },
 	// WebP: RIFF....WEBP
-	{ mime: 'image/webp', signature: [0x52, 0x49, 0x46, 0x46] } // "RIFF" — further validated below
+	{ mime: 'image/webp', signature: [0x52, 0x49, 0x46, 0x46] }, // "RIFF" — further validated below
+	// PDF: starts with %PDF-
+	{ mime: 'application/pdf', signature: [0x25, 0x50, 0x44, 0x46, 0x2d] }
 ];
 
 /**
@@ -146,7 +149,7 @@ export function assertPermittedAttachment(mime: string, size: number, bytes?: Bu
 	}
 	if (size > MAX_ATTACHMENT_BYTES) {
 		securityLog('file_upload_rejected', { reason: 'file_too_large', sizeBytes: size });
-		throw new HttpError(400, 'bad_request', 'Attachment must be 2 MB or smaller.');
+		throw new HttpError(400, 'bad_request', `Attachment must be ${MAX_ATTACHMENT_MB} MB or smaller.`);
 	}
 	// Magic byte validation — verify actual content matches claimed MIME type
 	if (bytes && !validateMagicBytes(bytes, mime)) {

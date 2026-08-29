@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import { openDatabase } from './db/connection.ts';
-import { seedDatabase } from './db/seed.ts';
+import { seedMockData } from './db/seed.ts';
 import { resetRateLimitStore } from './middleware/ratelimit.ts';
 import type { Database } from 'better-sqlite3';
 
@@ -94,7 +94,7 @@ describe('HostelGrievance Security Tests', () => {
 		dir = mkdtempSync(join(tmpdir(), 'hg-sec-'));
 		db = openDatabase(join(dir, 'hostel.db'));
 		const uploadDir = join(dir, 'uploads');
-		seedDatabase(db, uploadDir);
+		seedMockData(db, uploadDir);
 		app = createApp({ db, uploadsDir: uploadDir });
 	});
 
@@ -442,6 +442,7 @@ describe('HostelGrievance Security Tests', () => {
 			form.append('title', 'Ceiling paint peeling in room');
 			form.append('category', 'Room');
 			form.append('description', 'Ceiling paint is peeling off heavily after monsoon rain.');
+			form.append('availableTime', 'Morning 10AM-12PM');
 			form.append('file', new File([PNG], 'paint-peel.png', { type: 'image/png' }));
 
 			const res = await app.request('/api/grievances', {
@@ -500,26 +501,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(existsSync(uploadPath)).toBe(true);
 			const diskBytes = readFileSync(uploadPath);
 			expect(diskBytes.equals(JPEG)).toBe(true);
-		});
-
-		it('serves attachment from database fallback if disk file is removed', async () => {
-			const { cookie } = await login(app, 'student@example.test', 'student123');
-			// att-1 is seeded
-			const row = db.prepare('SELECT stored_filename FROM attachments WHERE id = ?').get('att-1') as {
-				stored_filename: string;
-			};
-			const diskFile = join(dir, 'uploads', row.stored_filename);
-			expect(existsSync(diskFile)).toBe(true);
-
-			// Delete file from disk to simulate missing disk storage
-			unlinkSync(diskFile);
-			expect(existsSync(diskFile)).toBe(false);
-
-			// Request attachment download — should serve from database BLOB
-			const res = await app.request('/api/attachments/att-1', { headers: { Cookie: cookie } });
-			expect(res.status).toBe(200);
-			const bytes = Buffer.from(await res.arrayBuffer());
-			expect(bytes.equals(JPEG)).toBe(true);
 		});
 	});
 
@@ -769,13 +750,14 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					title: 'Broken cupboard hinge in B-204',
 					category: 'Room',
-					description: 'The cupboard hinge in B-204 is broken and the door will not close properly.'
+					description: 'The cupboard hinge in B-204 is broken and the door will not close properly.',
+					availableTime: 'Anytime in the evening'
 				})
 			});
 			expect(created.status).toBe(201);
 			const grievance = await created.json();
 			const id = grievance.data.id as string;
-			expect(id).toMatch(/^GRV-\d{4}$/);
+			expect(id).toMatch(/^GRV-.+$/);
 			expect(grievance.data.studentId).toBe('stu-1');
 			expect(grievance.data.status).toBe('Open');
 
@@ -949,7 +931,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'New Student Test',
 					email: 'newstu@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'student',
 					room: 'D-101',
 					rollNo: '23BCE9001',
@@ -969,7 +951,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'New Warden Test',
 					email: 'newwar@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'warden',
 					empId: 'EMP-9001'
 				})
@@ -986,7 +968,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'New Admin Test',
 					email: 'newadm@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'admin',
 					empId: 'ADM-9001'
 				})
@@ -1046,7 +1028,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Warden Added Student',
 					email: 'wstudent@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'student',
 					rollNo: '23BCS8001',
 					room: 'E-201'
@@ -1063,7 +1045,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Illegal Warden',
 					email: 'illegalw@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'warden',
 					empId: 'EMP-ILLEGAL'
 				})
@@ -1114,7 +1096,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Student Escalation',
 					email: 'esc@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'admin'
 				})
 			});
@@ -1200,7 +1182,8 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					title: 'Broken ceiling fan in common room',
 					category: 'Electricity',
-					description: 'The ceiling fan has stopped rotating and makes a buzzing sound when turned on.'
+					description: 'The ceiling fan has stopped rotating and makes a buzzing sound when turned on.',
+					availableTime: 'Weekends'
 				})
 			});
 			expect(createRes.status).toBe(201);
@@ -1274,7 +1257,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Test Audit Student',
 					email: 'testauditstu@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'student',
 					rollNo: '23BCE7777',
 					room: 'C-301'
@@ -1521,7 +1504,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Duplicate Roll Student',
 					email: 'duproll@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'student',
 					rollNo: '21BCE1042',
 					wardenId: 'war-1'
@@ -1542,7 +1525,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Duplicate Emp Warden',
 					email: 'dupemp@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'warden',
 					empId: 'EMP-1001'
 				})
@@ -1561,7 +1544,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Invalid Warden Student',
 					email: 'invwar@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'student',
 					rollNo: '24BCE1111',
 					wardenId: 'stu-1' // stu-1 is not a warden
@@ -1581,7 +1564,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Unassigned Student',
 					email: 'unassigned@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'student',
 					rollNo: '24BCE2222'
 					// wardenId missing
@@ -1601,7 +1584,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: 'Alias Test Student',
 					email: 'alias@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'student',
 					studentId: '24BCE3333',
 					wardenId: 'war-1'

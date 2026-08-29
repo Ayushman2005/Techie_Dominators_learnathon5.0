@@ -323,7 +323,7 @@
 			</div>
 			<div class="space-y-1">
 				<Label for="stu-add-password">Initial Password *</Label>
-				<Input id="stu-add-password" type="password" bind:value={addPassword} placeholder="•••••••• (min 6 characters)" required />
+				<Input id="stu-add-password" type="password" bind:value={addPassword} placeholder="•••••••• (min 12 characters)" required />
 			</div>
 			<div class="space-y-1">
 				<Label for="stu-add-room">Hostel Room Number</Label>

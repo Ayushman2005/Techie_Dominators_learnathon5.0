@@ -26,9 +26,13 @@ export function resetDatabase(dbPath = DEFAULT_DB_PATH, uploadsDir = DEFAULT_UPL
 	db.exec('PRAGMA foreign_keys = OFF;');
 	db.exec('DROP TABLE IF EXISTS attachments;');
 	db.exec('DROP TABLE IF EXISTS comments;');
+	db.exec('DROP TABLE IF EXISTS resolution_reviews;');
+	db.exec('DROP TABLE IF EXISTS audit_logs;');
+	db.exec('DROP TABLE IF EXISTS notices;');
 	db.exec('DROP TABLE IF EXISTS grievances;');
 	db.exec('DROP TABLE IF EXISTS sessions;');
 	db.exec('DROP TABLE IF EXISTS users;');
+	db.exec('DROP TABLE IF EXISTS hostels;');
 	applySchema(db);
 	seedDatabase(db, uploadsDir);
 	db.close();

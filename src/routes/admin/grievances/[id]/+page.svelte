@@ -150,6 +150,13 @@
 				</CardHeader>
 				<CardContent>
 					<p class="text-sm leading-relaxed whitespace-pre-wrap">{grievance.description}</p>
+					{#if grievance.availableTime}
+						<Separator class="my-4" />
+						<div class="mt-4">
+							<h3 class="mb-1 text-sm font-medium text-foreground">Available Time</h3>
+							<p class="text-sm font-medium text-primary bg-primary/10 px-3 py-2 rounded-md">{grievance.availableTime}</p>
+						</div>
+					{/if}
 				</CardContent>
 			</Card>
 

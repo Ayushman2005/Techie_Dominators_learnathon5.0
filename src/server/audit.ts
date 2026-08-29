@@ -3,15 +3,20 @@ import type { Database } from 'better-sqlite3';
 import { insertAuditLog, type InsertAuditLogInput } from './db/queries.ts';
 import { securityLog, type SecurityEventType } from './logger.ts';
 import type { AuditLogRow } from './types/index.ts';
+import { TRUST_PROXY } from './config.ts';
 
 export function getClientIp(c: Context): string {
-	const forwarded = c.req.header('x-forwarded-for');
-	if (forwarded) {
-		const first = forwarded.split(',')[0].trim();
-		if (first) return first;
+	if (TRUST_PROXY) {
+		const forwarded = c.req.header('x-forwarded-for');
+		if (forwarded) {
+			const first = forwarded.split(',')[0].trim();
+			if (first) return first;
+		}
+		const realIp = c.req.header('x-real-ip');
+		if (realIp) return realIp.trim();
 	}
-	const realIp = c.req.header('x-real-ip');
-	if (realIp) return realIp.trim();
+	// Without a trusted proxy, there is no reliable IP available in Hono Node adapters.
+	// We return a fallback rather than trusting a spoofable header.
 	return '127.0.0.1';
 }
 
@@ -37,6 +42,7 @@ export function recordAuditLog(
 		'auth.unauthorized': 'authorization_failure',
 		'grievance.created': 'grievance_created',
 		'grievance.status_changed': 'grievance_status_changed',
+		'grievance.priority_changed': 'grievance_status_changed', // Maps to the same security event type for simplicity
 		'grievance.deleted': 'grievance_deleted',
 		'comment.created': 'comment_created',
 		'user.created': 'user_created',

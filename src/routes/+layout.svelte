@@ -6,6 +6,7 @@
 	import AppHeader from '$lib/components/app/app-header.svelte';
 	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
 	import { getSession } from '$lib/stores/auth.svelte';
+	import { ModeWatcher } from 'mode-watcher';
 
 	let { children } = $props();
 
@@ -14,6 +15,7 @@
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<ModeWatcher />
 <Toaster position="bottom-right" richColors />
 <div class={showShell ? 'bg-muted/30 flex min-h-svh flex-col' : 'contents'}>
 	{#if showShell && user}

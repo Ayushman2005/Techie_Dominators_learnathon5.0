@@ -77,16 +77,16 @@
 	description="System-wide administration, user management, audit surveillance, and grievance oversight."
 >
 	{#snippet actions()}
-		<div class="flex flex-wrap items-center gap-2">
-			<Button variant="outline" href="/admin/users">
+		<div class="flex flex-col sm:flex-row flex-wrap w-full sm:w-auto items-stretch sm:items-center gap-2">
+			<Button variant="outline" href="/admin/users" class="w-full sm:w-auto">
 				<UsersIcon class="mr-1.5 size-4" />
 				Manage Users
 			</Button>
-			<Button variant="outline" href="/admin/audit-logs">
+			<Button variant="outline" href="/admin/audit-logs" class="w-full sm:w-auto">
 				<HistoryIcon class="mr-1.5 size-4" />
 				Audit Logs
 			</Button>
-			<Button href="/admin/grievances">
+			<Button href="/admin/grievances" class="w-full sm:w-auto">
 				<ClipboardListIcon class="mr-1.5 size-4" />
 				All Grievances
 			</Button>

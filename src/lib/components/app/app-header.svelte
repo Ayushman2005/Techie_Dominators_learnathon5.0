@@ -10,6 +10,7 @@
 	import MenuIcon from '@lucide/svelte/icons/menu';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import SchoolIcon from '@lucide/svelte/icons/school';
+	import ThemeToggle from '$lib/components/app/theme-toggle.svelte';
 
 	let { user }: { user: User } = $props();
 
@@ -29,6 +30,7 @@
 	class="bg-card sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b px-4 sm:px-6"
 >
 	<div class="flex items-center gap-2">
+		<ThemeToggle />
 		<Sheet.Root bind:open={mobileOpen}>
 			<Sheet.Trigger
 				class="hover:bg-muted -ml-2 inline-flex size-9 items-center justify-center rounded-md md:hidden"
@@ -55,13 +57,13 @@
 		</a>
 	</div>
 	<div class="flex items-center gap-3">
-		<div class="text-right">
+		<div class="text-right hidden sm:block">
 			<p class="text-sm leading-tight font-medium">{user.name}</p>
 			<p class="text-muted-foreground text-xs leading-tight capitalize">{user.role}</p>
 		</div>
-		<Button variant="outline" size="sm" onclick={handleSignOut}>
-			<LogOutIcon class="size-4" />
-			Sign out
+		<Button variant="outline" size="sm" onclick={handleSignOut} class="px-2 sm:px-3">
+			<LogOutIcon class="size-4 sm:mr-2" />
+			<span class="hidden sm:inline">Sign out</span>
 		</Button>
 	</div>
 </header>
