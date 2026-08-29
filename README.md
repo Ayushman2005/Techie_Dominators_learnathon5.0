@@ -138,21 +138,6 @@ npm run dev:all
 - 🌐 **Frontend Application**: [http://localhost:5173](http://localhost:5173)
 - 🔌 **Backend API Service**: [http://127.0.0.1:3001](http://127.0.0.1:3001)
 
----
-
-## 🔐 Test Credentials
-
-Use these seeded development accounts to test role workflows:
-
-| Role | Email Address | Password | Identifiers | Permissions & Scope |
-| :--- | :--- | :--- | :--- | :--- |
-| **👑 Admin** | `admin@example.test` | `admin123` | Emp ID: `EMP-ADM01` | Full access: Users, hostels, grievances, analytics, audit logs |
-| **🏢 Warden** | `warden@example.test` | `warden123` | Emp ID: `EMP-WAR01` | Triage grievances, manage assigned student directory & notices |
-| **🎓 Student** | `student@example.test` | `student123` | Roll: `24BCE1001` (Room B-204) | File complaints, upload attachments, submit resolution reviews |
-| **🎓 Student** | `priya@example.test` | `student123` | Roll: `24BCE1002` (Room A-112) | Resident account assigned to Warden |
-| **🎓 Student** | `rohan@example.test` | `student123` | Roll: `24BCE1003` (Room C-008) | Resident account assigned to Warden |
-
----
 
 ## 🛡️ Security & Hierarchical RBAC
 
