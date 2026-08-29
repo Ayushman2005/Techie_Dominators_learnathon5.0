@@ -148,15 +148,6 @@ export function assembleGrievanceSummaries(db: Database, rows: GrievanceRow[]): 
 	// Actually, let's just do a simple map for now to avoid the attachments/comments N+1 which is the heavy part.
 	
 	return rows.map((row) => {
-<<<<<<< HEAD
-		let student = userMap.get(row.student_id);
-		if (!student) {
-			const fallback = findUserById(db, row.student_id);
-			student = fallback ? assembleUser(db, fallback) : assembleUser(db, userRows[0]); // Fallback
-		}
-		// Return summary with empty arrays to avoid N+1 on heavy relations
-		return toPublicGrievance(row, student!, [], [], null);
-=======
 		const student = userMap.get(row.student_id);
 		if (!student) {
 			// Student record missing — data integrity error, don't silently substitute another user
@@ -164,7 +155,6 @@ export function assembleGrievanceSummaries(db: Database, rows: GrievanceRow[]): 
 		}
 		// Return summary with empty arrays to avoid N+1 on heavy relations
 		return toPublicGrievance(row, student, [], [], null);
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	});
 }
 
@@ -179,26 +169,15 @@ export function requireGrievance(db: Database, id: string): GrievanceRow {
 export function listUsers(
 	db: Database,
 	role?: Role,
-<<<<<<< HEAD
-	filterScope?: { wardenId?: string; hostelId?: string | null }
-): UserRow[] {
-	if (role === 'student' && filterScope?.hostelId) {
-		return db
-			.prepare('SELECT * FROM users WHERE role = ? AND hostel_id = ? ORDER BY created_at DESC')
-			.all(role, filterScope.hostelId) as UserRow[];
-	}
-	if (role === 'student' && filterScope?.wardenId) {
-=======
 	filterScope?: { wardenId?: string; hostelId?: string | null } | string
 ): UserRow[] {
 	const wardenId = typeof filterScope === 'string' ? filterScope : filterScope?.wardenId;
 	const hostelId = typeof filterScope === 'object' ? filterScope?.hostelId : undefined;
 
 	if (role === 'student' && wardenId) {
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 		return db
 			.prepare('SELECT * FROM users WHERE role = ? AND warden_id = ? ORDER BY created_at DESC')
-			.all(role, filterScope.wardenId) as UserRow[];
+			.all(role, wardenId) as UserRow[];
 	}
 	if (role === 'student' && hostelId) {
 		return db
@@ -327,9 +306,6 @@ export function deleteGrievance(db: Database, id: string, uploadsDir: string = D
 	db.prepare('DELETE FROM grievances WHERE id = ?').run(id);
 }
 
-<<<<<<< HEAD
-export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow, db?: Database): void {
-=======
 export function assertCanViewGrievance(
 	first: SessionUser | Database,
 	second: GrievanceRow | SessionUser,
@@ -349,21 +325,11 @@ export function assertCanViewGrievance(
 		row = third as GrievanceRow;
 	}
 
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	switch (user.role) {
 		case 'admin':
 			// Admins have unrestricted visibility over all grievances
 			return;
 		case 'warden': {
-<<<<<<< HEAD
-			// Wardens are scoped to students in their hostel.
-			// If no db is passed (legacy call), fall through to unrestricted access
-			// for backward-compatibility; pass db wherever possible.
-			if (db) {
-				const student = findUserById(db, row.student_id);
-				if (!student || student.hostel_id !== user.hostel_id) {
-					throw new HttpError(403, 'unauthorized', 'You cannot access this grievance.');
-=======
 			if (db) {
 				const student = findUserById(db, row.student_id);
 				if (
@@ -377,7 +343,6 @@ export function assertCanViewGrievance(
 						'unauthorized',
 						'You cannot access grievances for students not assigned to you.'
 					);
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 				}
 			}
 			return;
@@ -553,20 +518,10 @@ export function listGrievancesFiltered(
 		baseConditions = ['g.student_id = ?'];
 		baseParams = [scope.userId];
 	} else if (scope.role === 'warden') {
-<<<<<<< HEAD
-		if (!scope.hostelId) {
-			// If warden has no hostel, they see nothing
-			baseConditions = ['1 = 0'];
-		} else {
-			baseConditions = ['u.hostel_id = ?'];
-			baseParams = [scope.hostelId];
-		}
-=======
 		// Filter strictly by warden_id assignment, not hostel — multiple wardens can share a hostel
 		// and each should only see their own assigned students' grievances.
 		baseConditions = ['u.warden_id = ?'];
 		baseParams = [scope.userId];
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	}
 	// admin: no base condition — sees all
 

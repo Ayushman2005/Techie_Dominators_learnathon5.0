@@ -424,10 +424,7 @@ describe('HostelGrievance Security Tests', () => {
 			const uploadPath = join(dir, 'uploads', row.stored_filename);
 			expect(existsSync(uploadPath)).toBe(true);
 			const diskBytes = readFileSync(uploadPath);
-<<<<<<< HEAD
 			expect(diskBytes.equals(JPEG)).toBe(true);
-=======
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 		});
 	});
 

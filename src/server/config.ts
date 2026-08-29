@@ -15,11 +15,7 @@ export const API_PORT = Number(process.env.HOSTEL_API_PORT ?? 3001);
 
 export const SESSION_COOKIE = 'hg_session';
 
-<<<<<<< HEAD
-// Ultra-secure: Reduced session TTL to 30 minutes
-=======
 /** Session time-to-live: 30 minutes (1,800 seconds). */
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 export const SESSION_TTL_SECONDS = 30 * 60;
 
 /** Maximum file size per attachment: 5 MB (raised from 2 MB to support PDFs). */

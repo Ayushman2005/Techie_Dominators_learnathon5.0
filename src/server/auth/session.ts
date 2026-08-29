@@ -48,15 +48,6 @@ export function readSessionUser(db: Database, rawToken: string): SessionUser | u
 		db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash);
 		return undefined;
 	}
-<<<<<<< HEAD
-	// Sliding window renewal: if session expires within 15 minutes, extend it.
-	// This ensures active users are never unexpectedly logged out while idle
-	// users still get cleaned up after the full TTL.
-	const msUntilExpiry = new Date(row.expires_at).getTime() - Date.now();
-	const renewThresholdMs = 15 * 60 * 1000; // 15 minutes
-	if (msUntilExpiry < renewThresholdMs) {
-		db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?').run(expiryIso(), token);
-=======
 	// Sliding window renewal: if session expires within 10 minutes, extend it.
 	// This ensures active users are never unexpectedly logged out while idle
 	// users still get cleaned up after the full TTL.
@@ -64,7 +55,6 @@ export function readSessionUser(db: Database, rawToken: string): SessionUser | u
 	const renewThresholdMs = 10 * 60 * 1000; // 10 minutes
 	if (msUntilExpiry < renewThresholdMs) {
 		db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?').run(expiryIso(), tokenHash);
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	}
 	return {
 		id: row.id,
@@ -156,8 +146,6 @@ export function requireWarden(user: SessionUser): void {
 		throw new HttpError(403, 'unauthorized', 'Access denied.');
 	}
 }
-<<<<<<< HEAD
-=======
 
 export function requireOwner(user: SessionUser, ownerId: string, resourceType: string): void {
 	if (user.role !== 'student' || user.id !== ownerId) {
@@ -169,4 +157,3 @@ export function requireOwner(user: SessionUser, ownerId: string, resourceType: s
 		throw new HttpError(403, 'unauthorized', 'Access denied.');
 	}
 }
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700

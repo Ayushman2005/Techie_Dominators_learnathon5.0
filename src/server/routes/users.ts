@@ -154,16 +154,12 @@ userRoutes.get('/', (c) => {
 
 	let users: UserRow[];
 	if (user.role === 'warden') {
-<<<<<<< HEAD
 		// Wardens are strictly restricted to students in their assigned hostel
 		if (!user.hostel_id) {
 			users = []; // No hostel assigned means no students
 		} else {
 			users = listUsers(db, 'student', { hostelId: user.hostel_id });
 		}
-=======
-		users = listUsers(db, 'student', user.id);
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	} else {
 		users = listUsers(db, roleParam);
 	}
@@ -598,22 +594,6 @@ userRoutes.delete('/:id', (c) => {
 	}
 
 	// SECURITY FIX: Warden can only delete students assigned to them
-<<<<<<< HEAD
-	if (user.role === 'warden' && targetUser.role === 'student' && targetUser.warden_id !== user.id) {
-		recordAuditLog(c, db, {
-			eventType: 'auth.unauthorized',
-			action: 'Warden attempted to delete a student assigned to another warden',
-			actorId: user.id,
-			actorName: user.name,
-			actorEmail: user.email,
-			actorRole: user.role,
-			targetId: targetUser.id,
-			targetType: 'user',
-			details: { reason: 'warden_mismatch_delete' },
-			status: 'warning'
-		});
-		throw new HttpError(403, 'unauthorized', 'You can only delete students assigned to you.');
-=======
 	if (user.role === 'warden') {
 		if (targetUser.role !== 'student' || targetUser.warden_id !== user.id) {
 			recordAuditLog(c, db, {
@@ -630,7 +610,6 @@ userRoutes.delete('/:id', (c) => {
 			});
 			throw new HttpError(403, 'unauthorized', 'You can only delete students assigned to you.');
 		}
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	}
 
 	deleteUser(db, targetId, c.get('uploadsDir'));

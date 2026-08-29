@@ -4,12 +4,8 @@
  * This is a lightweight, dependency-free rate limiter suitable for
  * single-instance university deployments.
  */
-<<<<<<< HEAD
-
-import { getConnInfo } from '@hono/node-server/conninfo';
-=======
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 import type { Context, Next } from 'hono';
+
 import { HttpError } from '../http/errors.ts';
 import { securityLog } from '../logger.ts';
 import { TRUST_PROXY } from '../config.ts';
@@ -91,59 +87,15 @@ function pruneWindow(timestamps: number[], windowStart: number): number[] {
 	return timestamps.filter((t) => t > windowStart);
 }
 
-<<<<<<< HEAD
-/**
- * Get a rate-limit key from the context.
- * For login: use remote IP (prevents credential stuffing regardless of account).
- * For authenticated endpoints: use userId (per-user fairness, not IP-based).
- */
-/**
- * Get a rate-limit key from the context.
- * For login: use remote IP (prevents credential stuffing regardless of account).
- * For authenticated endpoints: use userId (per-user fairness, not IP-based).
- *
- * SECURITY: X-Forwarded-For is only trusted when TRUST_PROXY=true (i.e. when
- * a trusted reverse proxy is configured that strips/rewrites this header).
- * Trusting it unconditionally allows an attacker to spoof their IP and bypass
- * rate limiting by cycling through fake values in the header.
- */
-=======
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 function getKey(c: Context, useUserId: boolean): string {
 	if (useUserId) {
 		const userId = c.get('rateLimitUserId' as never) as string | undefined;
 		if (userId) return `user:${userId}`;
 	}
-<<<<<<< HEAD
-	// Only trust proxy headers when TRUST_PROXY is explicitly enabled
-	if (TRUST_PROXY) {
-		const forwarded = c.req.header('x-forwarded-for');
-		if (forwarded) {
-			const ip = forwarded.split(',')[0].trim();
-			if (ip) return `ip:${ip}`;
-		}
-		const realIp = c.req.header('x-real-ip');
-		if (realIp) return `ip:${realIp.trim()}`;
-	}
-	// Without a trusted proxy, fall back to the underlying socket IP.
-	try {
-		const info = getConnInfo(c);
-		if (info && info.remote.address) {
-			return `ip:${info.remote.address}`;
-		}
-	} catch {
-		// Fallback if getConnInfo fails for any reason
-	}
-	
-	// Absolute worst-case fallback, though getConnInfo should rarely fail in Node.
-	const userAgent = c.req.header('user-agent') ?? 'ua-unknown';
-	const acceptLang = c.req.header('accept-language') ?? 'lang-unknown';
-	return `fingerprint:${userAgent.slice(0, 80)}:${acceptLang.slice(0, 20)}`;
-=======
 	const ip = getClientIp(c);
 	return `ip:${ip}`;
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 }
+
 
 export function rateLimitMiddleware(config: RateLimitConfig, useUserId = false) {
 	const { maxRequests, windowMs, message = 'Too many requests. Please try again later.' } = config;
@@ -180,21 +132,12 @@ export function rateLimitMiddleware(config: RateLimitConfig, useUserId = false) 
 	};
 }
 
-<<<<<<< HEAD
-/** Rate limiter for login endpoint: 3 attempts per 2 minutes per IP to prevent brute-force attacks. */
-export const loginRateLimit = rateLimitMiddleware(
-	{
-		maxRequests: 3,
-		windowMs: 2 * 60 * 1000, // 2 minutes
-		message: 'Too many login attempts. Please wait 2 minutes before trying again.'
-=======
 /** Rate limiter for login endpoint: 10 attempts per minute per IP to prevent brute-force attacks. */
 export const loginRateLimit = rateLimitMiddleware(
 	{
 		maxRequests: 10,
 		windowMs: 60 * 1000, // 1 minute
 		message: 'Too many login attempts. Please wait 1 minute before trying again.'
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	},
 	false
 );

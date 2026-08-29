@@ -196,12 +196,9 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 			`Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`
 		);
 	}
-<<<<<<< HEAD
 	if (availableTime.length === 0) {
 		throw new HttpError(400, 'bad_request', 'Available time must be provided.');
 	}
-=======
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	if (availableTime.length > 200) {
 		throw new HttpError(400, 'bad_request', 'Available time description is too long.');
 	}
@@ -212,11 +209,7 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 	db.prepare(
 		`INSERT INTO grievances (id, student_id, title, category, description, priority, available_time, status, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`
-<<<<<<< HEAD
 	).run(id, user.id, title, parsedCategory, description, parsedPriority, availableTime, ts, ts);
-=======
-	).run(id, user.id, title, parsedCategory, description, parsedPriority, availableTime || null, ts, ts);
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 
 	recordAuditLog(c, db, {
 		eventType: 'grievance.created',

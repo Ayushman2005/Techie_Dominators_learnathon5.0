@@ -47,10 +47,6 @@ attachmentRoutes.get('/:id', (c) => {
 	c.header('Content-Type', attachmentRow.mime_type);
 	c.header('Content-Length', String(bytes.length));
 	c.header('Content-Disposition', `${dispositionType}; filename*=UTF-8''${safeFilename}`);
-<<<<<<< HEAD
-	// Prevent the browser from re-interpreting the content type
-=======
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	c.header('X-Content-Type-Options', 'nosniff');
 
 	return c.body(new Uint8Array(bytes));

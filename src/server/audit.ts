@@ -3,30 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { insertAuditLog, type InsertAuditLogInput } from './db/queries.ts';
 import { securityLog, type SecurityEventType } from './logger.ts';
 import type { AuditLogRow } from './types/index.ts';
-<<<<<<< HEAD
-import { TRUST_PROXY } from './config.ts';
-
-export function getClientIp(c: Context): string {
-	if (TRUST_PROXY) {
-		const forwarded = c.req.header('x-forwarded-for');
-		if (forwarded) {
-			const first = forwarded.split(',')[0].trim();
-			if (first) return first;
-		}
-		const realIp = c.req.header('x-real-ip');
-		if (realIp) return realIp.trim();
-	}
-	// Without a trusted proxy, there is no reliable IP available in Hono Node adapters.
-	// We return a fallback rather than trusting a spoofable header.
-	return '127.0.0.1';
-}
-
-/**
- * Record an audit log event in the database and emit structured console log.
- */
-=======
 import { getClientIp } from './middleware/ratelimit.ts';
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 export function recordAuditLog(
 	c: Context,
 	db: Database,
