@@ -138,6 +138,25 @@ npm run dev:all
 - 🌐 **Frontend Application**: [http://localhost:5173](http://localhost:5173)
 - 🔌 **Backend API Service**: [http://127.0.0.1:3001](http://127.0.0.1:3001)
 
+---
+
+## 🔐 Test Credentials
+
+Pre-seeded accounts are readily available in `data/hostel.db` for instant evaluation across all roles:
+
+| Role | Name | Email ID | Password | Identifier | Assigned Hostel / Scope |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **👑 Admin** | Dr. S. K. Panda | `admin@example.test` | `admin123` | `ADM-0001` | System-Wide Governance |
+| **🏢 Warden 1** | Mr. K. Sahu | `warden@example.test` | `warden123` | `EMP-1001` | Boys Hostel A |
+| **🏢 Warden 2** | Mr. R. K. Mishra | `warden2@example.test` | `warden123` | `EMP-1002` | Girls Hostel B |
+| **🎓 Student 1** | Aarav Mehta | `student@example.test` | `student123` | `21BCE1042` | Room B-204 (Warden: Mr. K. Sahu) |
+| **🎓 Student 2** | Priya Nair | `priya@example.test` | `student123` | `21BCE1088` | Room A-112 (Warden: Mr. K. Sahu) |
+| **🎓 Student 3** | Rohan Das | `rohan@example.test` | `student123` | `22BCS2015` | Room C-008 (Warden: Mr. R. K. Mishra) |
+
+> [!TIP]
+> You can also click the quick-login demo shortcuts on the login page ([http://localhost:5173/login](http://localhost:5173/login)) to autofill credentials for any of these accounts instantly.
+
+---
 
 ## 🛡️ Security & Hierarchical RBAC
 
