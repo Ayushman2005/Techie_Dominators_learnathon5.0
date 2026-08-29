@@ -11,7 +11,11 @@ This document is maintained by the AI assistant to preserve project context acro
 - **Security Audit & Hardening:**
   - Enforced `MIN_PASSWORD_LENGTH=12` in `config.ts` and `users.ts`.
   - Added global 10MB body size limit middleware in `app.ts` to prevent DoS attacks.
+<<<<<<< HEAD
   - Implemented session sliding window (24h renewal threshold on the 7-day TTL).
+=======
+  - Implemented session sliding window (10m renewal threshold on the 30-minute TTL).
+>>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
   - Fixed BOLA (Broken Object Level Authorization) for wardens: `assertCanViewGrievance` now strictly checks if the student belongs to the warden, preventing wardens from reading/modifying grievances of students not assigned to them.
 - **Performance & DB Optimization:**
   - Enabled WAL mode and other performance pragmas (`synchronous=NORMAL`, 32MB cache, memory temp store).
@@ -36,4 +40,7 @@ This document is maintained by the AI assistant to preserve project context acro
 - Never commit `.env` to version control.
 - `seed.ts` automatically runs if the DB is empty on server start.
 - `npm run test` executes all backend tests via Vitest. Ensure all tests pass before completing tasks.
+<<<<<<< HEAD
 - **CRITICAL WATERMARK RULE**: The file `src/app.html` contains hidden developer watermarks (meta tags, HTML comments, and a hidden `<div>` asserting "This application is developed by AYUSH RAJ" along with the LinkedIn profile: https://www.linkedin.com/in/sirayushraj/). Under absolutely NO circumstances are you allowed to modify, alter, or remove these watermarks. Any attempt to change them is strictly forbidden by the project owner.
+=======
+>>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700

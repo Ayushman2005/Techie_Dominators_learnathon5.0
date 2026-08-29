@@ -1,8 +1,3 @@
-/**
- * HostelGrievance — domain types.
- * These mirror the shape the future Hono API will return.
- */
-
 export type Role = 'student' | 'warden' | 'admin';
 
 export interface Hostel {
@@ -32,21 +27,21 @@ export interface User {
 	name: string;
 	email: string;
 	role: Role;
-	/** For students: hostel room identifier shown to wardens. */
 	room?: string | null;
-	/** For students: unique roll number / Student ID. */
 	rollNo?: string | null;
-	/** For students: alias for rollNo / Student ID. */
 	studentId?: string | null;
-	/** For wardens / admins: unique employee staff ID. */
 	empId?: string | null;
+<<<<<<< HEAD
 	/** Contact phone number. */
 	phone?: string | null;
 	/** Emergency contact number. */
 	emergencyContact?: string | null;
 	/** For students: assigned warden's user ID (1-to-1 mapping). */
+=======
+	phone?: string | null;
+	emergencyContact?: string | null;
+>>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	wardenId?: string | null;
-	/** For students: populated assigned warden profile. */
 	warden?: User | null;
 	/** The hostel this user belongs to */
 	hostelId?: string | null;
@@ -83,7 +78,6 @@ export interface Attachment {
 	id: string;
 	filename: string;
 	sizeBytes: number;
-	/** MIME type; the backend will later enforce allowed types authoritatively. */
 	contentType: string;
 }
 
@@ -91,10 +85,9 @@ export interface Comment {
 	id: string;
 	grievanceId: string;
 	authorId: string;
-	/** Denormalized for convenient display; API will provide this. */
 	author: User;
 	body: string;
-	createdAt: string; // ISO timestamp
+	createdAt: string;
 }
 
 export interface ResolutionReview {
@@ -117,7 +110,6 @@ export interface Grievance {
 	status: GrievanceStatus;
 	priority?: string;
 	studentId: string;
-	/** Denormalized for warden list display. */
 	student: User;
 	availableTime?: string | null;
 	createdAt: string; // ISO timestamp
@@ -127,12 +119,10 @@ export interface Grievance {
 	review?: ResolutionReview | null;
 }
 
-/** Result of a mock sign-in attempt. */
 export type AuthResult =
 	| { ok: true; user: User }
 	| { ok: false; error: string };
 
-/** Result wrapper for operations that can fail generically. */
 export type Result<T> =
 	| { ok: true; data: T }
 	| { ok: false; error: string };

@@ -1,5 +1,4 @@
-<script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
+<script lang="ts">	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
@@ -30,7 +29,6 @@
 	let error = $state<string | null>(null);
 	let searchQuery = $state('');
 
-	// Dialog states
 	let addDialogOpen = $state(false);
 	let editDialogOpen = $state(false);
 	let deleteDialogOpen = $state(false);
@@ -38,14 +36,12 @@
 	let selectedStudent = $state<User | null>(null);
 	let formSubmitting = $state(false);
 
-	// Add Form fields
 	let addName = $state('');
 	let addEmail = $state('');
 	let addPassword = $state('');
 	let addRollNo = $state('');
 	let addRoom = $state('');
 
-	// Edit Form fields
 	let editName = $state('');
 	let editEmail = $state('');
 	let editPassword = $state('');
@@ -75,7 +71,6 @@
 	async function loadStudents() {
 		loading = true;
 		error = null;
-		// Request students assigned to this warden
 		const result = await userService.list('student');
 		if (result.ok) {
 			students = result.data;
@@ -106,7 +101,7 @@
 			name: addName.trim(),
 			email: addEmail.trim(),
 			password: addPassword,
-			role: 'student', // Wardens can only create students (assigned to themselves)
+			role: 'student',
 			rollNo: addRollNo.trim(),
 			room: addRoom.trim() || undefined
 		};
@@ -202,7 +197,6 @@
 	{/snippet}
 </PageHeader>
 
-<!-- Controls: Search & Summary -->
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 	<div class="flex items-center gap-2">
 		<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-muted text-foreground border border-border">
@@ -301,7 +295,6 @@
 	</Card>
 {/if}
 
-<!-- ADD STUDENT DIALOG -->
 <Dialog.Root bind:open={addDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
@@ -342,7 +335,6 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<!-- EDIT STUDENT DIALOG -->
 <Dialog.Root bind:open={editDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
@@ -380,7 +372,6 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<!-- REMOVE STUDENT CONFIRMATION DIALOG -->
 <Dialog.Root bind:open={deleteDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>

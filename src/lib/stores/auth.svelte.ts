@@ -1,13 +1,6 @@
-/**
- * Session state — Svelte 5 runes module.
- * Single source of truth for "who is logged in" across the UI.
- * The future Hono API replaces the backing service, not this module's API.
- */
 import { authService } from '$lib/services';
 import type { User } from '$lib/types';
 
-// Restored synchronously (mock: localStorage) so route guards can rely on it
-// during the very first load without an async race.
 let current = $state<User | null>(authService.restore());
 
 export function getSession(): User | null {

@@ -1,5 +1,4 @@
-<script lang="ts">
-	import { Card, CardContent } from '$lib/components/ui/card/index.js';
+<script lang="ts">	import { Card, CardContent } from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import PaperclipIcon from '@lucide/svelte/icons/paperclip';
@@ -19,7 +18,6 @@
 	} = $props();
 
 	let inputEl: HTMLInputElement | null = $state(null);
-	// Force re-render of the input value after remove so re-selecting the same file works.
 	let inputKey = $state(0);
 
 	function formatSize(bytes: number): string {

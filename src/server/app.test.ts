@@ -1,21 +1,3 @@
-/**
- * HostelGrievance — Security Test Suite
- *
- * Tests cover:
- * - Authentication (login, logout, session handling)
- * - Authorization / IDOR (access control between users and roles)
- * - File upload security (type, size, magic bytes, path traversal filenames)
- * - Input validation (length limits, type checks)
- * - Error handling (no internal info leakage)
- * - Security headers
- * - CORS enforcement
- * - Rate limiting (login)
- * - Functional regression (student and warden workflows still work)
- *
- * These tests call the live Hono app in-process — no network needed.
- * Each test uses an isolated in-memory database and temp upload directory.
- */
-
 import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,31 +8,19 @@ import { seedMockData } from './db/seed.ts';
 import { resetRateLimitStore } from './middleware/ratelimit.ts';
 import type { Database } from 'better-sqlite3';
 
-// ────────────────────────────────────────────────────────────────────────────
-// Minimal valid image buffers for file upload tests
-// ────────────────────────────────────────────────────────────────────────────
-
-/** 1×1 pixel PNG — valid PNG magic bytes */
 const PNG = Buffer.from(
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
 	'base64'
 );
 
-/** Minimal JPEG — valid JPEG magic bytes (FF D8 FF) */
 const JPEG = Buffer.from(
 	'/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAG/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPwB//9k=',
 	'base64'
 );
 
-/** Not an image — a plain text file with PNG extension */
 const NOT_AN_IMAGE = Buffer.from('Hello, I am not an image. <script>alert(1)</script>');
 
-/** Bytes that start with wrong magic (not a real PNG despite claiming to be) */
 const FAKE_PNG = Buffer.from('This is not a PNG file at all');
-
-// ────────────────────────────────────────────────────────────────────────────
-// Test harness helpers
-// ────────────────────────────────────────────────────────────────────────────
 
 function cookieHeader(res: Response): string {
 	const anyHeaders = res.headers as Headers & { getSetCookie?: () => string[] };
@@ -78,18 +48,12 @@ async function login(app: ReturnType<typeof createApp>, email: string, password:
 	return { res, json, cookie: cookieHeader(res), rawCookieHeader: cookieAttributes(res) };
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Test fixture
-// ────────────────────────────────────────────────────────────────────────────
-
 describe('HostelGrievance Security Tests', () => {
 	let dir: string;
 	let app: ReturnType<typeof createApp>;
 	let db: Database;
 
 	beforeEach(() => {
-		// Reset rate limit store so tests are isolated — prevents rate limit state
-		// from previous tests causing subsequent login() calls to get 429 → 401.
 		resetRateLimitStore();
 		dir = mkdtempSync(join(tmpdir(), 'hg-sec-'));
 		db = openDatabase(join(dir, 'hostel.db'));
@@ -99,22 +63,15 @@ describe('HostelGrievance Security Tests', () => {
 	});
 
 	afterEach(() => {
-		// Close DB before removing temp dir (prevents Windows EPERM errors)
 		try {
 			db.close();
 		} catch {
-			/* already closed */
 		}
 		try {
 			rmSync(dir, { recursive: true, force: true });
 		} catch {
-			/* Windows may still hold handles — ignore in CI */
 		}
 	});
-
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 1: Authentication
-	// ══════════════════════════════════════════════════════════════════════════
 
 	describe('Authentication', () => {
 		it('login works for student and warden accounts', async () => {
@@ -122,7 +79,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(student.res.status).toBe(200);
 			expect(student.json.user.email).toBe('student@example.test');
 			expect(student.json.user.role).toBe('student');
-			// Sensitive fields must not be returned
 			expect(student.json.user.password).toBeUndefined();
 			expect(student.json.user.password_hash).toBeUndefined();
 			expect(student.cookie).toContain('hg_session=');
@@ -146,7 +102,6 @@ describe('HostelGrievance Security Tests', () => {
 
 			const unknownEmail = await login(app, 'nobody@example.test', 'anything');
 			expect(unknownEmail.res.status).toBe(401);
-			// Both errors must return identical messages to prevent enumeration
 			expect(unknownEmail.json.error).toBe(badPassword.json.error);
 		});
 
@@ -167,24 +122,20 @@ describe('HostelGrievance Security Tests', () => {
 		it('logout destroys server-side session so token cannot be reused', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 
-			// Session works before logout
 			const before = await app.request('/api/me', { headers: { Cookie: cookie } });
 			expect(before.status).toBe(200);
 
-			// Logout
 			await app.request('/api/logout', { method: 'POST', headers: { Cookie: cookie } });
 
-			// Session is now invalid — same cookie must be rejected
 			const after = await app.request('/api/me', { headers: { Cookie: cookie } });
 			expect(after.status).toBe(401);
 		});
 
 		it('expired session is rejected', async () => {
 			const { cookie, json } = await login(app, 'student@example.test', 'student123');
-			// Manually expire the session in the DB
 			const userId = json.user.id as string;
 			db.prepare('UPDATE sessions SET expires_at = ? WHERE user_id = ?').run(
-				new Date(Date.now() - 1000).toISOString(), // 1 second in the past
+				new Date(Date.now() - 1000).toISOString(),
 				userId
 			);
 			const res = await app.request('/api/me', { headers: { Cookie: cookie } });
@@ -199,13 +150,8 @@ describe('HostelGrievance Security Tests', () => {
 		});
 	});
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 2: Authorization / IDOR (most critical)
-	// ══════════════════════════════════════════════════════════════════════════
-
 	describe('Authorization — IDOR Prevention', () => {
 		it('student cannot read another student\'s grievance (IDOR fix)', async () => {
-			// GRV-0003 belongs to stu-2 (priya), not stu-1
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const res = await app.request('/api/grievances/GRV-0003', { headers: { Cookie: cookie } });
 			expect(res.status).toBe(403);
@@ -240,7 +186,6 @@ describe('HostelGrievance Security Tests', () => {
 		});
 
 		it('student cannot PATCH (edit) another student\'s grievance (IDOR fix)', async () => {
-			// stu-1 tries to edit GRV-0003 which belongs to stu-2
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const res = await app.request('/api/grievances/GRV-0003', {
 				method: 'PATCH',
@@ -251,7 +196,6 @@ describe('HostelGrievance Security Tests', () => {
 		});
 
 		it('student cannot change status of any grievance', async () => {
-			// Students should not be able to resolve their own grievances
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const res = await app.request('/api/grievances/GRV-0001', {
 				method: 'PATCH',
@@ -262,14 +206,12 @@ describe('HostelGrievance Security Tests', () => {
 		});
 
 		it('student cannot download another student\'s attachment (IDOR fix)', async () => {
-			// att-3 belongs to GRV-0003 (stu-2) — stu-1 must not access it
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const res = await app.request('/api/attachments/att-3', { headers: { Cookie: cookie } });
 			expect(res.status).toBe(403);
 		});
 
 		it('student can download their own attachment', async () => {
-			// att-1 belongs to GRV-0001 (stu-1)
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const res = await app.request('/api/attachments/att-1', { headers: { Cookie: cookie } });
 			expect(res.status).toBe(200);
@@ -293,7 +235,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('warden can update status but cannot edit content', async () => {
 			const { cookie } = await login(app, 'warden@example.test', 'warden123');
 
-			// Status update allowed
 			const updated = await app.request('/api/grievances/GRV-0008', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -303,7 +244,6 @@ describe('HostelGrievance Security Tests', () => {
 			const updatedJson = await updated.json();
 			expect(updatedJson.data.status).toBe('In Progress');
 
-			// Content edit forbidden
 			const contentEdit = await app.request('/api/grievances/GRV-0001', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -312,10 +252,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(contentEdit.status).toBe(403);
 		});
 	});
-
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 3: File Upload Security
-	// ══════════════════════════════════════════════════════════════════════════
 
 	describe('File Upload Security', () => {
 		it('accepts a valid PNG image', async () => {
@@ -372,7 +308,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('rejects a file with wrong magic bytes (MIME spoofing attempt)', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const form = new FormData();
-			// File claims to be PNG but has wrong magic bytes
 			form.append('file', new File([FAKE_PNG], 'malicious.png', { type: 'image/png' }));
 			const res = await app.request('/api/grievances/GRV-0001/attachments', {
 				method: 'POST',
@@ -387,7 +322,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('rejects non-image content with image MIME type', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const form = new FormData();
-			// Script content but image/png MIME — magic bytes will not match
 			form.append('file', new File([NOT_AN_IMAGE], 'shell.png', { type: 'image/png' }));
 			const res = await app.request('/api/grievances/GRV-0001/attachments', {
 				method: 'POST',
@@ -400,17 +334,14 @@ describe('HostelGrievance Security Tests', () => {
 		it('handles a path-traversal-style filename safely (stored name is random)', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const form = new FormData();
-			// Malicious filename — should be stored with a random name, not this path
 			form.append('file', new File([PNG], '../../etc/passwd.png', { type: 'image/png' }));
 			const res = await app.request('/api/grievances/GRV-0001/attachments', {
 				method: 'POST',
 				headers: { Cookie: cookie },
 				body: form
 			});
-			// Should succeed (the dangerous filename is sanitized and not used as storage path)
 			expect(res.status).toBe(201);
 			const json = await res.json();
-			// The original filename is stored as display metadata (sanitized to basename)
 			expect(json.data.filename).not.toContain('..');
 			expect(json.data.filename).not.toContain('/');
 		});
@@ -424,7 +355,6 @@ describe('HostelGrievance Security Tests', () => {
 		});
 
 		it('student cannot attach to a resolved grievance', async () => {
-			// GRV-0007 is resolved and owned by stu-3 (rohan)
 			const { cookie } = await login(app, 'rohan@example.test', 'student123');
 			const form = new FormData();
 			form.append('file', new File([PNG], 'photo.png', { type: 'image/png' }));
@@ -436,7 +366,7 @@ describe('HostelGrievance Security Tests', () => {
 			expect(res.status).toBe(409);
 		});
 
-		it('stores uploaded picture in both the database and the uploads folder on grievance creation', async () => {
+		it('stores uploaded picture in the uploads folder and references in database on grievance creation', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const form = new FormData();
 			form.append('title', 'Ceiling paint peeling in room');
@@ -455,24 +385,21 @@ describe('HostelGrievance Security Tests', () => {
 			const grievanceId = json.data.id;
 			const attId = json.data.attachments[0].id;
 
-			// Verify in SQLite hostel.db
 			const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(attId) as {
 				id: string;
 				stored_filename: string;
-				data: Buffer;
+				data: Buffer | null;
 			};
 			expect(row).toBeDefined();
-			expect(row.data).toBeDefined();
-			expect(Buffer.from(row.data).equals(PNG)).toBe(true);
+			expect(row.data).toBeNull();
 
-			// Verify in uploads folder on disk
 			const uploadPath = join(dir, 'uploads', row.stored_filename);
 			expect(existsSync(uploadPath)).toBe(true);
 			const diskBytes = readFileSync(uploadPath);
 			expect(diskBytes.equals(PNG)).toBe(true);
 		});
 
-		it('stores uploaded picture in both the database and the uploads folder on attachment upload', async () => {
+		it('stores uploaded picture in the uploads folder and references in database on attachment upload', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const form = new FormData();
 			form.append('file', new File([JPEG], 'tap-detail.jpg', { type: 'image/jpeg' }));
@@ -486,27 +413,23 @@ describe('HostelGrievance Security Tests', () => {
 			const json = await res.json();
 			const attId = json.data.id;
 
-			// Verify in SQLite hostel.db
 			const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(attId) as {
 				id: string;
 				stored_filename: string;
-				data: Buffer;
+				data: Buffer | null;
 			};
 			expect(row).toBeDefined();
-			expect(row.data).toBeDefined();
-			expect(Buffer.from(row.data).equals(JPEG)).toBe(true);
+			expect(row.data).toBeNull();
 
-			// Verify in uploads folder on disk
 			const uploadPath = join(dir, 'uploads', row.stored_filename);
 			expect(existsSync(uploadPath)).toBe(true);
 			const diskBytes = readFileSync(uploadPath);
+<<<<<<< HEAD
 			expect(diskBytes.equals(JPEG)).toBe(true);
+=======
+>>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 		});
 	});
-
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 4: Input Validation
-	// ══════════════════════════════════════════════════════════════════════════
 
 	describe('Input Validation', () => {
 		it('rejects grievance with title too short', async () => {
@@ -602,8 +525,6 @@ describe('HostelGrievance Security Tests', () => {
 		});
 
 		it('rejects login with oversized password (before rate limit)', async () => {
-			// Note: This test must run before rate limit tests that exhaust the IP quota.
-			// resetRateLimitStore() in beforeEach ensures isolation.
 			const res = await app.request('/api/login', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -618,20 +539,13 @@ describe('HostelGrievance Security Tests', () => {
 			expect(res.status).toBe(404);
 			const json = await res.json();
 			expect(json.code).toBe('not_found');
-			// Must not leak internal details
 			expect(JSON.stringify(json)).not.toMatch(/sqlite|stack|ENOENT|Error:|at Object/i);
 		});
 	});
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 5: Error Handling — no internal info leakage
-	// ══════════════════════════════════════════════════════════════════════════
-
 	describe('Error Handling', () => {
 		it('unexpected errors return generic message, not internal details', async () => {
-			// Create a grievance to work with
 			const { cookie } = await login(app, 'student@example.test', 'student123');
-			// Force a 404 — we test that DB error messages don't leak
 			const res = await app.request('/api/grievances/TOTALLY-INVALID-ID-12345', {
 				headers: { Cookie: cookie }
 			});
@@ -639,10 +553,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(JSON.stringify(json)).not.toMatch(/sqlite|better-sqlite|stack trace|Error at/i);
 		});
 	});
-
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 6: Security Headers
-	// ══════════════════════════════════════════════════════════════════════════
 
 	describe('Security Headers', () => {
 		it('API responses include X-Content-Type-Options: nosniff', async () => {
@@ -676,16 +586,11 @@ describe('HostelGrievance Security Tests', () => {
 		});
 	});
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 7: CORS Enforcement
-	// ══════════════════════════════════════════════════════════════════════════
-
 	describe('CORS Enforcement', () => {
 		it('allows requests from trusted localhost origin', async () => {
 			const res = await app.request('/api/health', {
 				headers: { Origin: 'http://localhost:5173' }
 			});
-			// The CORS middleware should reflect the allowed origin
 			expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
 		});
 
@@ -694,7 +599,6 @@ describe('HostelGrievance Security Tests', () => {
 				headers: { Origin: 'https://evil.example.com' }
 			});
 			const acao = res.headers.get('access-control-allow-origin') ?? '';
-			// Must not echo back the malicious origin or use wildcard
 			expect(acao).not.toBe('https://evil.example.com');
 			expect(acao).not.toBe('*');
 		});
@@ -703,20 +607,14 @@ describe('HostelGrievance Security Tests', () => {
 			const res = await app.request('/api/health', {
 				headers: { Origin: 'https://attacker.com' }
 			});
-			// Must not have both credentials: true and *
 			const acao = res.headers.get('access-control-allow-origin') ?? '';
 			const acac = res.headers.get('access-control-allow-credentials') ?? '';
 			expect(acao === '*' && acac === 'true').toBe(false);
 		});
 	});
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 8: Rate Limiting
-	// ══════════════════════════════════════════════════════════════════════════
-
 	describe('Rate Limiting', () => {
 		it('rate-limits login after 10 failed attempts', async () => {
-			// Make 10 failed attempts
 			for (let i = 0; i < 10; i++) {
 				await app.request('/api/login', {
 					method: 'POST',
@@ -724,7 +622,6 @@ describe('HostelGrievance Security Tests', () => {
 					body: JSON.stringify({ email: 'student@example.test', password: 'wrong' })
 				});
 			}
-			// 11th attempt should be rate limited
 			const res = await app.request('/api/login', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -735,15 +632,10 @@ describe('HostelGrievance Security Tests', () => {
 		});
 	});
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 9: Functional Regression — Student Workflow
-	// ══════════════════════════════════════════════════════════════════════════
-
 	describe('Functional Regression — Student Workflow', () => {
 		it('student can complete full workflow: create → attach → view → comment → download', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 
-			// Create grievance
 			const created = await app.request('/api/grievances', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -761,7 +653,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(grievance.data.studentId).toBe('stu-1');
 			expect(grievance.data.status).toBe('Open');
 
-			// Upload attachment
 			const form = new FormData();
 			form.append('file', new File([PNG], 'hinge.png', { type: 'image/png' }));
 			const uploaded = await app.request(`/api/grievances/${id}/attachments`, {
@@ -773,13 +664,11 @@ describe('HostelGrievance Security Tests', () => {
 			const attMeta = await uploaded.json();
 			expect(attMeta.data.filename).toBe('hinge.png');
 
-			// View grievance
 			const viewed = await app.request(`/api/grievances/${id}`, { headers: { Cookie: cookie } });
 			expect(viewed.status).toBe(200);
 			const viewedJson = await viewed.json();
 			expect(viewedJson.data.attachments.length).toBeGreaterThan(0);
 
-			// Add comment
 			const commented = await app.request(`/api/grievances/${id}/comments`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -787,7 +676,6 @@ describe('HostelGrievance Security Tests', () => {
 			});
 			expect(commented.status).toBe(201);
 
-			// Download own attachment
 			const downloaded = await app.request(`/api/attachments/${attMeta.data.id}`, {
 				headers: { Cookie: cookie }
 			});
@@ -797,13 +685,11 @@ describe('HostelGrievance Security Tests', () => {
 			const bytes = Buffer.from(await downloaded.arrayBuffer());
 			expect(bytes.equals(PNG)).toBe(true);
 
-			// View own grievance list
 			const list = await app.request('/api/grievances', { headers: { Cookie: cookie } });
 			expect(list.status).toBe(200);
 			const listJson = await list.json();
 			expect(listJson.data.some((g: { id: string }) => g.id === id)).toBe(true);
 
-			// Logout
 			const logout = await app.request('/api/logout', {
 				method: 'POST',
 				headers: { Cookie: cookie }
@@ -822,7 +708,6 @@ describe('HostelGrievance Security Tests', () => {
 			const editedJson = await edited.json();
 			expect(editedJson.data.title).toContain('still dirty');
 
-			// Resolved grievance cannot be edited
 			const rohan = await login(app, 'rohan@example.test', 'student123');
 			const resolved = await app.request('/api/grievances/GRV-0004', {
 				method: 'PATCH',
@@ -835,31 +720,23 @@ describe('HostelGrievance Security Tests', () => {
 		});
 	});
 
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 10: Functional Regression — Warden Workflow
-	// ══════════════════════════════════════════════════════════════════════════
-
 	describe('Functional Regression — Warden Workflow', () => {
 		it('warden can view all grievances, add comments, and update status', async () => {
 			const { cookie } = await login(app, 'warden@example.test', 'warden123');
 
-			// View all grievances
 			const list = await app.request('/api/grievances', { headers: { Cookie: cookie } });
 			expect(list.status).toBe(200);
 			const listJson = await list.json();
 			expect(listJson.data.length).toBeGreaterThanOrEqual(5);
 
-			// View specific grievance from another student
 			const detail = await app.request('/api/grievances/GRV-0003', { headers: { Cookie: cookie } });
 			expect(detail.status).toBe(200);
 
-			// Read comments
 			const comments = await app.request('/api/grievances/GRV-0003/comments', {
 				headers: { Cookie: cookie }
 			});
 			expect(comments.status).toBe(200);
 
-			// Add comment as warden
 			const commented = await app.request('/api/grievances/GRV-0003/comments', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -869,7 +746,6 @@ describe('HostelGrievance Security Tests', () => {
 			const commentJson = await commented.json();
 			expect(commentJson.data.author.role).toBe('warden');
 
-			// Update status
 			const updated = await app.request('/api/grievances/GRV-0003', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -879,11 +755,9 @@ describe('HostelGrievance Security Tests', () => {
 			const updatedJson = await updated.json();
 			expect(updatedJson.data.status).toBe('In Progress');
 
-			// Download attachment (warden is authorized)
 			const att = await app.request('/api/attachments/att-3', { headers: { Cookie: cookie } });
 			expect(att.status).toBe(200);
 
-			// Logout
 			const logout = await app.request('/api/logout', {
 				method: 'POST',
 				headers: { Cookie: cookie }
@@ -891,10 +765,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(logout.status).toBe(200);
 		});
 	});
-
-	// ══════════════════════════════════════════════════════════════════════════
-	// SECTION 7: Hierarchical RBAC & User Management
-	// ══════════════════════════════════════════════════════════════════════════
 
 	describe('Hierarchical RBAC & User Management', () => {
 		it('admin login succeeds and returns admin role', async () => {
@@ -924,7 +794,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('admin can create student, warden, and admin accounts', async () => {
 			const { cookie } = await login(app, 'admin@example.test', 'admin123');
 
-			// Create student with Roll No and assigned Warden
 			const stuRes = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -944,7 +813,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(stuJson.data.rollNo).toBe('23BCE9001');
 			expect(stuJson.data.wardenId).toBe('war-1');
 
-			// Create warden with Emp ID
 			const warRes = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -961,7 +829,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(warJson.data.role).toBe('warden');
 			expect(warJson.data.empId).toBe('EMP-9001');
 
-			// Create admin
 			const admRes = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -981,7 +848,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('admin can update users and delete a grievance', async () => {
 			const { cookie } = await login(app, 'admin@example.test', 'admin123');
 
-			// Update student room, name, and roll number
 			const updateRes = await app.request('/api/users/stu-1', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -993,7 +859,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(updateJson.data.room).toBe('Z-999');
 			expect(updateJson.data.rollNo).toBe('21BCE1042-UPD');
 
-			// Admin delete grievance
 			const delGrv = await app.request('/api/grievances/GRV-0001', {
 				method: 'DELETE',
 				headers: { Cookie: cookie }
@@ -1015,13 +880,11 @@ describe('HostelGrievance Security Tests', () => {
 		it('warden can manage students but cannot see or modify wardens/admins', async () => {
 			const { cookie } = await login(app, 'warden@example.test', 'warden123');
 
-			// Warden listing users only returns students
 			const listRes = await app.request('/api/users', { headers: { Cookie: cookie } });
 			expect(listRes.status).toBe(200);
 			const listJson = await listRes.json();
 			expect(listJson.data.every((u: { role: string }) => u.role === 'student')).toBe(true);
 
-			// Warden can create a student (automatically assigned to this warden)
 			const createStu = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -1038,7 +901,6 @@ describe('HostelGrievance Security Tests', () => {
 			const createdStuJson = await createStu.json();
 			expect(createdStuJson.data.wardenId).toBe('war-1');
 
-			// Warden cannot create a warden or admin
 			const createWar = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -1052,7 +914,6 @@ describe('HostelGrievance Security Tests', () => {
 			});
 			expect(createWar.status).toBe(403);
 
-			// Warden cannot modify warden or admin accounts
 			const editWar = await app.request('/api/users/war-1', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -1067,14 +928,12 @@ describe('HostelGrievance Security Tests', () => {
 			});
 			expect(editAdm.status).toBe(403);
 
-			// Warden cannot delete admin or warden accounts
 			const delAdm = await app.request('/api/users/adm-1', {
 				method: 'DELETE',
 				headers: { Cookie: cookie }
 			});
 			expect(delAdm.status).toBe(403);
 
-			// Warden can delete the student they created
 			const delStu = await app.request(`/api/users/${createdStuJson.data.id}`, {
 				method: 'DELETE',
 				headers: { Cookie: cookie }
@@ -1085,11 +944,9 @@ describe('HostelGrievance Security Tests', () => {
 		it('students cannot access any user management endpoints', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 
-			// List
 			const list = await app.request('/api/users', { headers: { Cookie: cookie } });
 			expect(list.status).toBe(403);
 
-			// Create
 			const create = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -1102,7 +959,6 @@ describe('HostelGrievance Security Tests', () => {
 			});
 			expect(create.status).toBe(403);
 
-			// Edit
 			const edit = await app.request('/api/users/war-1', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: cookie },
@@ -1110,14 +966,12 @@ describe('HostelGrievance Security Tests', () => {
 			});
 			expect(edit.status).toBe(403);
 
-			// Delete
 			const del = await app.request('/api/users/stu-2', {
 				method: 'DELETE',
 				headers: { Cookie: cookie }
 			});
 			expect(del.status).toBe(403);
 
-			// Delete grievance
 			const delGrv = await app.request('/api/grievances/GRV-0001', {
 				method: 'DELETE',
 				headers: { Cookie: cookie }
@@ -1125,10 +979,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(delGrv.status).toBe(403);
 		});
 	});
-
-	// ────────────────────────────────────────────────────────────────────────────
-	// Admin Audit Logs System Tests
-	// ────────────────────────────────────────────────────────────────────────────
 
 	describe('Admin Audit Logs & Activity Surveillance', () => {
 		it('admin can list audit logs and view aggregated audit statistics', async () => {
@@ -1152,7 +1002,6 @@ describe('HostelGrievance Security Tests', () => {
 		});
 
 		it('students and wardens cannot access audit logs (403 Forbidden)', async () => {
-			// Student attempt
 			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
 			const stuRes = await app.request('/api/audit-logs', { headers: { Cookie: stuCookie } });
 			expect(stuRes.status).toBe(403);
@@ -1160,7 +1009,6 @@ describe('HostelGrievance Security Tests', () => {
 			const stuStats = await app.request('/api/audit-logs/stats', { headers: { Cookie: stuCookie } });
 			expect(stuStats.status).toBe(403);
 
-			// Warden attempt
 			const { cookie: warCookie } = await login(app, 'warden@example.test', 'warden123');
 			const warRes = await app.request('/api/audit-logs', { headers: { Cookie: warCookie } });
 			expect(warRes.status).toBe(403);
@@ -1168,7 +1016,6 @@ describe('HostelGrievance Security Tests', () => {
 			const warStats = await app.request('/api/audit-logs/stats', { headers: { Cookie: warCookie } });
 			expect(warStats.status).toBe(403);
 
-			// Unauthenticated attempt
 			const unauthRes = await app.request('/api/audit-logs');
 			expect(unauthRes.status).toBe(401);
 		});
@@ -1190,7 +1037,6 @@ describe('HostelGrievance Security Tests', () => {
 			const createdJson = await createRes.json();
 			const grievanceId = createdJson.data.id;
 
-			// Verify via admin audit logs
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 			const auditRes = await app.request(`/api/audit-logs?search=${grievanceId}`, { headers: { Cookie: admCookie } });
 			expect(auditRes.status).toBe(200);
@@ -1214,7 +1060,6 @@ describe('HostelGrievance Security Tests', () => {
 			});
 			expect(patchRes.status).toBe(200);
 
-			// Verify via admin audit logs
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 			const auditRes = await app.request('/api/audit-logs?search=GRV-0003', { headers: { Cookie: admCookie } });
 			expect(auditRes.status).toBe(200);
@@ -1237,7 +1082,6 @@ describe('HostelGrievance Security Tests', () => {
 			});
 			expect(cmtRes.status).toBe(201);
 
-			// Verify via admin audit logs
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 			const auditRes = await app.request('/api/audit-logs?eventType=comment.created', { headers: { Cookie: admCookie } });
 			expect(auditRes.status).toBe(200);
@@ -1266,7 +1110,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(createRes.status).toBe(201);
 			const created = await createRes.json();
 
-			// Verify via admin audit logs
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 			const auditRes = await app.request(`/api/audit-logs?search=${created.data.id}`, { headers: { Cookie: admCookie } });
 			expect(auditRes.status).toBe(200);
@@ -1281,19 +1124,16 @@ describe('HostelGrievance Security Tests', () => {
 		it('supports audit log role filters, search, and CSV/JSON export', async () => {
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 
-			// Filter by student role
 			const stuOnly = await app.request('/api/audit-logs?role=student', { headers: { Cookie: admCookie } });
 			expect(stuOnly.status).toBe(200);
 			const stuJson = await stuOnly.json();
 			expect(stuJson.data.every((l: any) => l.actorRole === 'student')).toBe(true);
 
-			// Filter by warden role
 			const warOnly = await app.request('/api/audit-logs?role=warden', { headers: { Cookie: admCookie } });
 			expect(warOnly.status).toBe(200);
 			const warJson = await warOnly.json();
 			expect(warJson.data.every((l: any) => l.actorRole === 'warden')).toBe(true);
 
-			// Export CSV
 			const csvRes = await app.request('/api/audit-logs/export?format=csv', { headers: { Cookie: admCookie } });
 			expect(csvRes.status).toBe(200);
 			expect(csvRes.headers.get('content-type')).toContain('text/csv');
@@ -1301,7 +1141,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(csvText).toContain('Timestamp');
 			expect(csvText).toContain('Actor Role');
 
-			// Export JSON
 			const jsonRes = await app.request('/api/audit-logs/export?format=json', { headers: { Cookie: admCookie } });
 			expect(jsonRes.status).toBe(200);
 			const exportData = await jsonRes.json();
@@ -1309,13 +1148,8 @@ describe('HostelGrievance Security Tests', () => {
 		});
 	});
 
-	// ────────────────────────────────────────────────────────────────────────────
-	// Student Post-Resolution Review & Verification Tests
-	// ────────────────────────────────────────────────────────────────────────────
-
 	describe('Student Post-Resolution Review & Solution Picture', () => {
 		it('student can submit resolution review with rating, feedback, and solution picture on a resolved grievance', async () => {
-			// GRV-0004 is owned by stu-3 (Rohan Das) and is 'resolved'
 			const { cookie: stuCookie } = await login(app, 'rohan@example.test', 'student123');
 
 			const form = new FormData();
@@ -1338,13 +1172,11 @@ describe('HostelGrievance Security Tests', () => {
 			expect(json.data.review.solutionAttachment).toBeDefined();
 			expect(json.data.review.solutionAttachment.filename).toBe('solution-fix.png');
 
-			// GET /api/grievances/GRV-0004/review
 			const getRev = await app.request('/api/grievances/GRV-0004/review', { headers: { Cookie: stuCookie } });
 			expect(getRev.status).toBe(200);
 			const getRevJson = await getRev.json();
 			expect(getRevJson.data.rating).toBe(5);
 
-			// Verify Admin Audit Log captured review.submitted
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 			const auditRes = await app.request('/api/audit-logs?search=GRV-0004', { headers: { Cookie: admCookie } });
 			expect(auditRes.status).toBe(200);
@@ -1358,7 +1190,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('submitting review on an open or in-progress grievance is rejected (409 conflict)', async () => {
 			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
 
-			// GRV-0001 is Open
 			const form = new FormData();
 			form.append('rating', '4');
 			form.append('feedback', 'Premature review attempt');
@@ -1378,7 +1209,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('student cannot submit review on another student grievance (403 forbidden)', async () => {
 			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
 
-			// GRV-0007 is owned by stu-3 (Rohan)
 			const form = new FormData();
 			form.append('rating', '5');
 			form.append('feedback', 'Trying to review another student ticket');
@@ -1413,7 +1243,6 @@ describe('HostelGrievance Security Tests', () => {
 		});
 
 		it('submitting review without a picture or invalid rating is rejected (400 bad_request)', async () => {
-			// First resolve GRV-0002 for stu-1
 			const { cookie: warCookie } = await login(app, 'warden@example.test', 'warden123');
 			await app.request('/api/grievances/GRV-0002', {
 				method: 'PATCH',
@@ -1423,7 +1252,6 @@ describe('HostelGrievance Security Tests', () => {
 
 			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
 
-			// Missing file
 			const formNoFile = new FormData();
 			formNoFile.append('rating', '5');
 			formNoFile.append('feedback', 'Missing file test feedback');
@@ -1435,7 +1263,6 @@ describe('HostelGrievance Security Tests', () => {
 			});
 			expect(noFileRes.status).toBe(400);
 
-			// Invalid rating
 			const formBadRating = new FormData();
 			formBadRating.append('rating', '10');
 			formBadRating.append('feedback', 'Invalid rating test feedback');
@@ -1450,13 +1277,8 @@ describe('HostelGrievance Security Tests', () => {
 		});
 	});
 
-	// ────────────────────────────────────────────────────────────────────────────
-	// Student-Warden 1-to-1 Mapping, Roll No, and Employee ID Tests
-	// ────────────────────────────────────────────────────────────────────────────
-
 	describe('Student-Warden 1-to-1 Mapping, Roll No, and Employee ID', () => {
 		it('warden can only list their own assigned students', async () => {
-			// war-1 (Mr. K. Sahu) is assigned to stu-1 and stu-2
 			const { cookie: war1Cookie } = await login(app, 'warden@example.test', 'warden123');
 			const listWar1 = await app.request('/api/users', { headers: { Cookie: war1Cookie } });
 			expect(listWar1.status).toBe(200);
@@ -1464,9 +1286,8 @@ describe('HostelGrievance Security Tests', () => {
 			expect(jsonWar1.data.every((s: any) => s.wardenId === 'war-1')).toBe(true);
 			expect(jsonWar1.data.some((s: any) => s.id === 'stu-1')).toBe(true);
 			expect(jsonWar1.data.some((s: any) => s.id === 'stu-2')).toBe(true);
-			expect(jsonWar1.data.some((s: any) => s.id === 'stu-3')).toBe(false); // stu-3 belongs to war-2
+			expect(jsonWar1.data.some((s: any) => s.id === 'stu-3')).toBe(false);
 
-			// war-2 (Mr. R. K. Mishra) is assigned to stu-3
 			const { cookie: war2Cookie } = await login(app, 'warden2@example.test', 'warden123');
 			const listWar2 = await app.request('/api/users', { headers: { Cookie: war2Cookie } });
 			expect(listWar2.status).toBe(200);
@@ -1477,7 +1298,6 @@ describe('HostelGrievance Security Tests', () => {
 		});
 
 		it('warden only sees grievances filed by their assigned students', async () => {
-			// war-1 should see grievances for stu-1 and stu-2, but not stu-3 (GRV-0004, GRV-0006, GRV-0007)
 			const { cookie: war1Cookie } = await login(app, 'warden@example.test', 'warden123');
 			const grvRes1 = await app.request('/api/grievances', { headers: { Cookie: war1Cookie } });
 			expect(grvRes1.status).toBe(200);
@@ -1485,7 +1305,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(grvJson1.data.every((g: any) => g.student.wardenId === 'war-1')).toBe(true);
 			expect(grvJson1.data.some((g: any) => g.id === 'GRV-0004')).toBe(false);
 
-			// war-2 should see grievances for stu-3
 			const { cookie: war2Cookie } = await login(app, 'warden2@example.test', 'warden123');
 			const grvRes2 = await app.request('/api/grievances', { headers: { Cookie: war2Cookie } });
 			expect(grvRes2.status).toBe(200);
@@ -1497,7 +1316,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('rejects duplicate student roll number with 409 conflict', async () => {
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 
-			// Try creating student with already existing rollNo '21BCE1042'
 			const res = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
@@ -1518,7 +1336,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('rejects duplicate warden employee ID with 409 conflict', async () => {
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 
-			// Try creating warden with already existing empId 'EMP-1001'
 			const res = await app.request('/api/users', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
@@ -1547,7 +1364,7 @@ describe('HostelGrievance Security Tests', () => {
 					password: 'password123456',
 					role: 'student',
 					rollNo: '24BCE1111',
-					wardenId: 'stu-1' // stu-1 is not a warden
+					wardenId: 'stu-1'
 				})
 			});
 			expect(res.status).toBe(400);
@@ -1567,7 +1384,6 @@ describe('HostelGrievance Security Tests', () => {
 					password: 'password123456',
 					role: 'student',
 					rollNo: '24BCE2222'
-					// wardenId missing
 				})
 			});
 			expect(res.status).toBe(400);
@@ -1618,7 +1434,6 @@ describe('HostelGrievance Security Tests', () => {
 		it('admin can reassign a student to another warden', async () => {
 			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
 
-			// Reassign stu-1 to war-2
 			const patchRes = await app.request('/api/users/stu-1', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
@@ -1629,7 +1444,6 @@ describe('HostelGrievance Security Tests', () => {
 			expect(patchJson.data.wardenId).toBe('war-2');
 			expect(patchJson.data.warden.name).toBe('Mr. R. K. Mishra');
 
-			// Reassign back to war-1
 			await app.request('/api/users/stu-1', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
@@ -1649,7 +1463,118 @@ describe('HostelGrievance Security Tests', () => {
 			expect(json.data.some((w: any) => w.empId === 'EMP-1001')).toBe(true);
 		});
 	});
+
+	describe('Security Hardening & Protection Verifications', () => {
+		it('warden can only delete students assigned to them, and cannot delete students assigned to other wardens', async () => {
+			const { cookie: war1Cookie } = await login(app, 'warden@example.test', 'warden123');
+
+			const deleteUnauthorized = await app.request('/api/users/stu-3', {
+				method: 'DELETE',
+				headers: { Cookie: war1Cookie }
+			});
+			expect(deleteUnauthorized.status).toBe(403);
+			const unauthJson = await deleteUnauthorized.json();
+			expect(unauthJson.error).toContain('assigned to you');
+
+			const deleteWarden = await app.request('/api/users/war-2', {
+				method: 'DELETE',
+				headers: { Cookie: war1Cookie }
+			});
+			expect(deleteWarden.status).toBe(403);
+
+			const deleteOwnStudent = await app.request('/api/users/stu-2', {
+				method: 'DELETE',
+				headers: { Cookie: war1Cookie }
+			});
+			expect(deleteOwnStudent.status).toBe(200);
+		});
+
+		it('cross-warden authorization prevents warden from viewing, commenting, or updating grievances of non-assigned students', async () => {
+			const { cookie: war1Cookie } = await login(app, 'warden@example.test', 'warden123');
+
+			const viewRes = await app.request('/api/grievances/GRV-0004', { headers: { Cookie: war1Cookie } });
+			expect(viewRes.status).toBe(403);
+
+			const commentRes = await app.request('/api/grievances/GRV-0004/comments', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: war1Cookie },
+				body: JSON.stringify({ body: 'Unauthorized warden comment' })
+			});
+			expect(commentRes.status).toBe(403);
+
+			const patchRes = await app.request('/api/grievances/GRV-0004', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: war1Cookie },
+				body: JSON.stringify({ status: 'In Progress' })
+			});
+			expect(patchRes.status).toBe(403);
+		});
+
+		it('session tokens are stored in SQLite as SHA-256 hashes rather than plaintext', async () => {
+			const { cookie } = await login(app, 'student@example.test', 'student123');
+			const rawToken = cookie.split('hg_session=')[1]?.split(';')[0];
+			expect(rawToken).toBeDefined();
+
+			const sessions = db.prepare('SELECT token, user_id FROM sessions WHERE user_id = ?').all('stu-1') as { token: string }[];
+			expect(sessions.length).toBeGreaterThan(0);
+			expect(sessions[0].token).not.toBe(rawToken);
+			expect(sessions[0].token).toMatch(/^[a-f0-9]{64}$/);
+		});
+
+		it('sanitizes spreadsheet formula control characters in CSV audit log export', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const maliciousName = '=HYPERLINK("http://evil.test","Click")';
+			const res = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({
+					name: maliciousName,
+					email: 'formula@example.test',
+					password: 'password123456',
+					role: 'student',
+					rollNo: '24BCE9999',
+					wardenId: 'war-1'
+				})
+			});
+			expect(res.status).toBe(201);
+
+			// Malicious user signs in so actorName starts with formula character
+			await login(app, 'formula@example.test', 'password123456');
+
+			const exportRes = await app.request('/api/audit-logs/export?format=csv', {
+				headers: { Cookie: admCookie }
+			});
+			expect(exportRes.status).toBe(200);
+			const csvText = await exportRes.text();
+			expect(csvText).toContain(`"'=HYPERLINK`);
+		});
+
+		it('stores attachment binaries in filesystem and sets data to NULL in database', async () => {
+			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
+
+			const form = new FormData();
+			form.set('title', 'New Leak Report With Attachment');
+			form.set('category', 'Water');
+			form.set('description', 'There is continuous water dripping in the ceiling bathroom.');
+			form.set('file', new File([PNG], 'proof.png', { type: 'image/png' }));
+
+			const res = await app.request('/api/grievances', {
+				method: 'POST',
+				headers: { Cookie: stuCookie },
+				body: form
+			});
+			expect(res.status).toBe(201);
+			const json = await res.json();
+			const grievanceId = json.data.id;
+
+			const attRow = db.prepare('SELECT stored_filename, data FROM attachments WHERE grievance_id = ?').get(grievanceId) as { stored_filename: string; data: any };
+			expect(attRow).toBeDefined();
+			expect(attRow.data).toBeNull();
+
+			const attId = json.data.attachments[0].id;
+			const dlRes = await app.request(`/api/attachments/${attId}`, { headers: { Cookie: stuCookie } });
+			expect(dlRes.status).toBe(200);
+		});
+	});
 });
-
-
-

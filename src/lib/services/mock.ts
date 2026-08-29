@@ -1,9 +1,3 @@
-/**
- * Mock implementation of the service layer.
- * In-memory store, deterministic IDs, small artificial latency so
- * loading states are real and testable. Swap this module for a Hono
- * API client later without touching any UI code.
- */
 import {
 	MOCK_CREDENTIALS,
 	MOCK_NOW,
@@ -41,10 +35,6 @@ function delay<T>(value: T, ms = LATENCY_MS): Promise<T> {
 
 const SESSION_KEY = 'hg.session.userId';
 
-/**
- * Module-level store. In SvelteKit this survives client-side navigation.
- * Session identity is mirrored to localStorage for restore().
- */
 const grievances: Grievance[] = buildSeedGrievances();
 
 function nextGrievanceId(): string {
@@ -56,17 +46,12 @@ function nextGrievanceId(): string {
 }
 
 function nowIso(): string {
-	// Deterministic "current time" for the mock; the API will use real time.
 	return MOCK_NOW;
 }
 
 function touch(g: Grievance): void {
 	g.updatedAt = nowIso();
 }
-
-// ---------------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------------
 
 class MockAuthService implements AuthService {
 	private currentUser: User | null = null;
@@ -86,7 +71,6 @@ class MockAuthService implements AuthService {
 		try {
 			localStorage.setItem(SESSION_KEY, user.id);
 		} catch {
-			// localStorage unavailable — session lives in memory only.
 		}
 		return delay({ ok: true as const, user });
 	}
@@ -96,7 +80,6 @@ class MockAuthService implements AuthService {
 		try {
 			localStorage.removeItem(SESSION_KEY);
 		} catch {
-			/* ignore */
 		}
 	}
 
@@ -116,10 +99,6 @@ class MockAuthService implements AuthService {
 function findUser(id: string): User | null {
 	return MOCK_USERS[id] ?? null;
 }
-
-// ---------------------------------------------------------------------------
-// Users
-// ---------------------------------------------------------------------------
 
 function enrichUser(u: User): User {
 	const clone = { ...u };
@@ -195,6 +174,7 @@ class MockUserService implements UserService {
 		};
 		return delay({ ok: true as const, data: stats });
 	}
+<<<<<<< HEAD
 
 	async updateMyProfile(input: { phone?: string | null; emergencyContact?: string | null }): Promise<Result<User>> {
 		const user = MOCK_USERS['usr-student-1']; // mock implementation
@@ -207,10 +187,20 @@ class MockUserService implements UserService {
 		return delay({ ok: true as const, data: undefined });
 	}
 }
+=======
+>>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 
-// ---------------------------------------------------------------------------
-// Grievances
-// ---------------------------------------------------------------------------
+	async updateMyProfile(input: { phone?: string | null; emergencyContact?: string | null }): Promise<Result<User>> {
+		const user = MOCK_USERS['usr-student-1']; // mock implementation
+		if (input.phone !== undefined) user.phone = input.phone;
+		if (input.emergencyContact !== undefined) user.emergencyContact = input.emergencyContact;
+		return delay({ ok: true as const, data: enrichUser(user) });
+	}
+
+	async changeMyPassword(current: string, next: string): Promise<Result<void>> {
+		return delay({ ok: true as const, data: undefined });
+	}
+}
 
 class MockGrievanceService implements GrievanceService {
 	async listForStudent(studentId: string): Promise<Result<Grievance[]>> {
@@ -326,15 +316,19 @@ class MockGrievanceService implements GrievanceService {
 		}
 		return delay({ ok: true as const, data: g.review ? { ...g.review } : null });
 	}
+<<<<<<< HEAD
 
 	async getStats(): Promise<Result<any>> {
 		return delay({ ok: true as const, data: { total: grievances.length, open: 0, inProgress: 0, resolved: 0 } });
 	}
 }
+=======
+>>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 
-// ---------------------------------------------------------------------------
-// Comments
-// ---------------------------------------------------------------------------
+	async getStats(): Promise<Result<any>> {
+		return delay({ ok: true as const, data: { total: grievances.length, open: 0, inProgress: 0, resolved: 0 } });
+	}
+}
 
 class MockCommentService implements CommentService {
 	private seq = 100;

@@ -1,43 +1,41 @@
 # Threat Model — HostelGrievance
 
-**Version**: 1.0  
-**Date**: 2026-08-28  
-**Application**: HostelGrievance — University hostel grievance management system  
-**Stack**: SvelteKit (CSR) + Hono (Node.js) + better-sqlite3
+**Version**: 2.0  
+**Date**: 2026-08-29  
+**Application**: HostelGrievance — University Hostel Grievance Management System  
+**Stack**: SvelteKit (CSR) + Hono (Node.js) + better-sqlite3  
 
 ---
 
-## 1. Assets
+## 1. Assets Inventory
 
 | Asset | Sensitivity | Protection Objective |
-|---|---|---|
-| Student personal information (name, email, room number) | HIGH | Confidentiality; student can only see their own |
-| Student credentials (password hashes) | CRITICAL | Never exposed; bcrypt hashed |
-| Authentication session tokens | CRITICAL | HttpOnly, not in logs, server-side expiry |
-| Grievance records | HIGH | Student reads own only; warden reads all |
-| Grievance comments | HIGH | Same access as parent grievance |
-| Attachment files (images) | HIGH | Authorization-gated download; not publicly addressable |
-| Warden account information | HIGH | Confidentiality |
-| Database file (`hostel.db`) | CRITICAL | Not web-accessible; filesystem ACL |
-| Application secrets / env vars | CRITICAL | In `.env` only; excluded from git |
-| Server filesystem | HIGH | File writes restricted to uploads directory |
-| Structured security logs | MEDIUM | Must not contain passwords or tokens |
-| API endpoints | MEDIUM | Authenticated and authorized per endpoint |
+| :--- | :--- | :--- |
+| **Student Personal Data** (Name, email, room, roll number) | HIGH | Confidentiality & Integrity; visible to owner, assigned warden & admins |
+| **Student & Staff Credentials** (Password hashes) | CRITICAL | Confidentiality & Integrity; bcrypt salted hashes; never returned over API |
+| **Authentication Session Tokens** | CRITICAL | Stored as SHA-256 hashes in DB; HttpOnly, SameSite=Strict cookies in transit |
+| **Grievance Records & Discussion** | HIGH | Student reads/edits own only; wardens read/manage assigned students; admins full oversight |
+| **Resolution Reviews & Proof Photos** | HIGH | Student owner submits rating & solution proof; wardens/admins inspect |
+| **Attachment Files** (Evidence photos/PDFs) | HIGH | Authorization-gated streaming; non-executable storage; randomized UUID paths |
+| **Broadcast Notices & Announcements** | MEDIUM | Integrity; Wardens broadcast to assigned hostel; Admins broadcast globally |
+| **Audit Logs & Security Events** | HIGH | Integrity & Confidentiality; Admin surveillance only; formula-injection protected |
+| **Hostel Architecture Records** | MEDIUM | Integrity; Admin managed |
+| **Database File (`hostel.db`)** | CRITICAL | Not web-accessible; file permissions restricted to app process |
+| **Application Secrets / Environment** | CRITICAL | Stored in `.env` only; excluded from version control |
+| **Server Filesystem (`uploads/`)** | HIGH | File operations constrained to randomized UUIDs within upload directory |
 
 ---
 
-## 2. Actors
+## 2. Actors & Threat Profiles
 
-| Actor | Trust Level | Description |
-|---|---|---|
-| Unauthenticated attacker | NONE | No valid session; must be blocked from all protected resources |
-| Authenticated student | LOW | Valid session; can only access their own grievances/attachments |
-| Authenticated warden | MEDIUM | Valid session; broader read access, status-change capability |
-| Compromised student account | LOW | Behaves as a student; blast radius limited to that student's data |
-| Compromised warden account | MEDIUM-HIGH | Can read/update all grievances; cannot access DB or filesystem |
-| Malicious file uploader | LOW | May upload crafted files; constrained by allowlist + magic bytes |
-| Attacker with captured session token | VARIABLE | Limited to the captured account's permissions |
-| Attacker exploiting application vulnerabilities | HIGH | Assumed capability; defense-in-depth designed against this |
+| Actor | Trust Level | Description & Capabilities |
+| :--- | :--- | :--- |
+| **Unauthenticated Attacker** | NONE | No active session. May attempt brute-force login, CSRF, IDOR, or DoS attacks. |
+| **Authenticated Student** | LOW | Valid student session. Permitted to file grievances, upload evidence, comment on own tickets, and submit resolution reviews. |
+| **Authenticated Warden** | MEDIUM | Valid staff session. Permitted to triage grievances, update status, comment, manage assigned students, and broadcast notices to their hostel. |
+| **Authenticated Administrator** | HIGH | System governance. Full CRUD on users, hostels, grievances, analytics, and audit surveillance. |
+| **Compromised Account** | VARIABLE | Attacker possessing stolen session cookie or credentials. Blast radius constrained by RBAC and session invalidation mechanisms. |
+| **Malicious File Uploader** | LOW | May attempt uploading polyglot files, scripts, or path traversal payloads disguised as images/PDFs. |
 
 ---
 
@@ -45,212 +43,198 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Internet / Browser                                      │
-│  Trust: NONE. All input is untrusted.                    │
+│  Internet / Browser Client                              │
+│  Trust: NONE. All incoming data is untrusted.           │
 └─────────────────────┬───────────────────────────────────┘
-                      │ HTTPS (must be enforced by reverse proxy)
+                      │ HTTPS (enforced by reverse proxy)
 ┌─────────────────────▼───────────────────────────────────┐
-│  SvelteKit Frontend (CSR — runs in browser)              │
-│  Trust: UX controls ONLY. Not a security boundary.       │
-│  Route guards improve UX but backend is authoritative.   │
+│  SvelteKit Frontend (CSR — Single Page App)             │
+│  Trust: UX routing ONLY. Not a security boundary.       │
+│  All business rules authoritative on backend.           │
 └─────────────────────┬───────────────────────────────────┘
-                      │ HTTP/REST API (same-origin in production)
+                      │ REST API + SameSite=Strict Cookies + X-CSRF-Token
 ┌─────────────────────▼───────────────────────────────────┐
-│  Hono API (Node.js)                                      │
-│  Trust: Validates everything. Entry point of all         │
-│  security decisions.                                     │
-│  - Input validation (schemas, length limits, types)      │
-│  - CORS allowlist enforcement                            │
-│  - Security headers                                      │
-│  - Rate limiting                                         │
+│  Hono API Gateway (Node.js)                             │
+│  Trust: Enforces edge defenses:                         │
+│  - Global Request Body Size Guard (10 MB max)           │
+│  - CORS Allowlist Verification                          │
+│  - Security Response Headers                            │
+│  - Sliding Window Rate Limiting                         │
+│  - Double-Submit CSRF Verification                      │
 └─────────────────────┬───────────────────────────────────┘
-                      │ Session cookie (HttpOnly, SameSite=Strict)
+                      │ Validated Session Cookie
 ┌─────────────────────▼───────────────────────────────────┐
-│  Authentication Layer                                    │
-│  Trust: Cookie token validated against DB. Expiry        │
-│  checked server-side. Never trust client-provided        │
-│  user_id, role, or permission fields.                    │
+│  Authentication & Identity Layer                        │
+│  Trust: Validates SHA-256 token hash against DB.        │
+│  Enforces server-side 30-minute TTL and expiry checks.  │
 └─────────────────────┬───────────────────────────────────┘
-                      │
+                      │ Authenticated User Context
 ┌─────────────────────▼───────────────────────────────────┐
-│  Authorization Layer                                     │
-│  Trust: Role and resource ownership enforced per         │
-│  request. assertCanViewGrievance() called on every       │
-│  access to a grievance or its sub-resources.             │
+│  Hierarchical RBAC & Object Authorization Layer         │
+│  Trust: assertCanViewGrievance() & role checks.         │
+│  Enforces owner verification & warden-student mapping.  │
 └─────────────────────┬───────────────────────────────────┘
-                      │ Parameterized SQLite queries only
+                      │ Parameterized SQL Queries
 ┌─────────────────────▼───────────────────────────────────┐
-│  Database (better-sqlite3 / SQLite)                      │
-│  Trust: Receives only validated, parameterized inputs.   │
-│  Foreign key constraints enforced. Schema validated.     │
+│  Database Layer (better-sqlite3 / SQLite)               │
+│  Trust: Foreign key cascading constraints enabled.       │
+│  Zero string-concatenated SQL queries.                  │
 └─────────────────────┬───────────────────────────────────┘
-                      │ Random-named files, canonical path check
+                      │ Server-generated UUID File Names
 ┌─────────────────────▼───────────────────────────────────┐
-│  Filesystem / Upload Storage                             │
-│  Trust: Stored filenames are always server-generated     │
-│  UUIDs. Read paths validated against upload directory.   │
-│  No user-supplied paths reach the filesystem.            │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────┐
-│  Node.js Process / Host OS                               │
-│  Trust: Process has only the permissions it needs.       │
-│  Should run as non-root in production.                   │
+│  Storage Layer (uploads/)                               │
+│  Trust: Path traversal verification & magic byte checks.│
+│  deleteStoredFile() disk cleanup on record deletion.    │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### What each boundary trusts and does NOT trust
+---
 
-| Boundary | Trusts | Does NOT Trust |
-|---|---|---|
-| Hono API | Valid session cookie token | Client-provided user_id, role, permissions, ownership |
-| Auth Layer | DB session record with valid expiry | Cookie value itself without DB validation |
-| Authz Layer | Authenticated user's DB role | That the requested resource belongs to the user |
-| Database | Parameterized query parameters | String-interpolated user input |
-| Filesystem | Server-generated stored filenames | Client-supplied filenames as paths |
+## 4. Attack Surface & Endpoint Scoping
+
+| Endpoint | Method | Auth | Role Scope | Security Controls |
+| :--- | :--- | :--- | :--- | :--- |
+| `/api/login` | `POST` | No | Public | Rate-limited (10/min), salted bcrypt, generic error messages |
+| `/api/logout` | `POST` | Yes | Any | Server-side session record destruction + cookie purge |
+| `/api/me` | `GET` | Yes | Any | Returns authenticated user profile |
+| `/api/users/me` | `PUT` | Yes | Any | Self-service contact update; CSRF protected |
+| `/api/users/me/change-password` | `POST` | Yes | Any | Current password verified; revokes all existing sessions |
+| `/api/users` | `GET` | Yes | Warden/Admin | Scoped: Admin sees all; Warden sees assigned students only |
+| `/api/users` | `POST` | Yes | Warden/Admin | Admin creates any; Warden creates students in own hostel only |
+| `/api/users/:id` | `PATCH` | Yes | Warden/Admin | Role change restricted to Admin; Warden updates assigned only |
+| `/api/users/:id` | `DELETE` | Yes | Warden/Admin | Self-delete blocked; Warden deletes assigned students only |
+| `/api/grievances` | `GET` | Yes | Any | Scoped: Student (own); Warden (assigned students); Admin (all) |
+| `/api/grievances` | `POST` | Yes | Student | Rate-limited; Magic bytes verified; UUID storage |
+| `/api/grievances/:id` | `GET` | Yes | Any | Anti-IDOR: `assertCanViewGrievance` enforced |
+| `/api/grievances/:id` | `PATCH` | Yes | Any | Student: edits content of open; Warden: updates status |
+| `/api/grievances/:id` | `DELETE` | Yes | Admin | Admin-only; Cascades physical attachment deletion from disk |
+| `/api/grievances/:id/comments` | `GET/POST` | Yes | Any | Anti-IDOR: `assertCanViewGrievance`; Rate-limited |
+| `/api/grievances/:id/attachments` | `POST` | Yes | Student | Student owner only; 5 attachment max; 5MB cap |
+| `/api/grievances/:id/review` | `POST` | Yes | Student | Owner only; Rating 1–5; Requires solution photo |
+| `/api/attachments/:id` | `GET` | Yes | Any | Ownership verified via parent grievance; Attachment disposition |
+| `/api/notices` | `GET` | Yes | Any | Scoped by student/warden hostel + global notices |
+| `/api/notices` | `POST` | Yes | Warden/Admin | Warden targets own hostel; Admin can target any hostel |
+| `/api/hostels` | `GET/POST/DEL` | Yes | Admin (write) | Admin manages hostel buildings and blocks |
+| `/api/audit-logs` | `GET/EXPORT` | Yes | Admin | Formula injection sanitization on CSV export |
 
 ---
 
-## 4. Attack Surface
+## 5. STRIDE Threat Analysis & Threat Scenarios
 
-| Surface | Protocol | Auth Required | Notes |
-|---|---|---|---|
-| `POST /api/login` | HTTP | No | Rate-limited 10/15min per IP |
-| `POST /api/logout` | HTTP | Session | Destroys server session |
-| `GET /api/me` | HTTP | Session | Returns public user profile |
-| `GET /api/grievances` | HTTP | Session | Scoped by role |
-| `POST /api/grievances` | HTTP + multipart | Session (student) | File upload: allowlist + magic bytes |
-| `GET /api/grievances/:id` | HTTP | Session | Ownership enforced |
-| `PATCH /api/grievances/:id` | HTTP | Session | Role-scoped fields |
-| `GET /api/grievances/:id/comments` | HTTP | Session | Ownership enforced |
-| `POST /api/grievances/:id/comments` | HTTP | Session | Ownership enforced, rate-limited |
-| `POST /api/grievances/:id/attachments` | HTTP + multipart | Session (student owner) | File upload: allowlist + magic bytes |
-| `GET /api/attachments/:id` | HTTP | Session | Ownership enforced via grievance |
-| `GET /api/health` | HTTP | No | No sensitive data |
+### T1: IDOR / BOLA — Student Accesses Another Student's Grievance (Information Disclosure)
+- **Threat**: Student attempts to view `GET /api/grievances/GRV-9999` filed by another student.
+- **Control**: `assertCanViewGrievance(user, row, db)` validates `row.student_id === user.id`.
+- **Status**: ✅ **MITIGATED**
 
----
+### T2: IDOR — Unauthorized Attachment Download (Information Disclosure)
+- **Threat**: Attacker accesses `GET /api/attachments/att-xxxx` to download private evidence.
+- **Control**: Endpoint queries parent grievance and calls `assertCanViewGrievance()` before reading file bytes.
+- **Status**: ✅ **MITIGATED**
 
-## 5. Threat Scenarios and Attack Paths
+### T3: Privilege Escalation — Student Modifies Ticket Status (Tampering)
+- **Threat**: Student sends `PATCH /api/grievances/:id` with `{"status": "resolved"}`.
+- **Control**: Role-based switch in PATCH handler rejects `status` modifications from students with `403 Forbidden`.
+- **Status**: ✅ **MITIGATED**
 
-### T1: IDOR — Student reads another student's grievance
-**Vector**: `GET /api/grievances/GRV-0003` while authenticated as a different student  
-**Impact**: Data breach — student personal information, grievance details, comments  
-**Control**: `assertCanViewGrievance(user, row)` called on every grievance access; enforces `row.student_id === user.id` for students  
-**Status**: ✅ MITIGATED
+### T4: Session Fixation & Token Theft (Spoofing)
+- **Threat**: Attacker intercepts or guesses session tokens.
+- **Control**: 256-bit entropy random tokens; stored as SHA-256 hashes in DB; `HttpOnly`, `SameSite=Strict`, `Secure` cookie attributes.
+- **Status**: ✅ **MITIGATED**
 
-### T2: IDOR — Student downloads another student's attachment
-**Vector**: `GET /api/attachments/att-3` while authenticated as a different student  
-**Impact**: File data theft  
-**Control**: Attachment route loads parent grievance, calls `assertCanViewGrievance` before serving bytes  
-**Status**: ✅ MITIGATED
+### T5: Session Persistence After Logout / Password Reset (Elevation of Privilege)
+- **Threat**: Stolen token reused after the user logs out or updates their password.
+- **Control**: `/api/logout` and password changes execute `deleteSessionsForUser(db, userId)` to destroy session tokens in SQLite.
+- **Status**: ✅ **MITIGATED**
 
-### T3: Student changes grievance status (privilege escalation)
-**Vector**: `PATCH /api/grievances/:id` with `{"status": "Resolved"}`  
-**Impact**: Student can close/reopen any grievance, disrupting the warden workflow  
-**Control**: Student PATCH handler rejects `status` field; only warden branch handles status changes  
-**Status**: ✅ MITIGATED
+### T6: Credential Brute-Force & Stuffing (Spoofing)
+- **Threat**: Automated password guessing against login endpoint.
+- **Control**: Sliding-window rate limiter (10 attempts / min per IP) + computational cost of bcrypt (10 rounds).
+- **Status**: ✅ **MITIGATED**
 
-### T4: Authentication bypass / session fixation
-**Vector**: Forged or guessed session token in cookie  
-**Impact**: Full account takeover  
-**Control**: 32-byte random token (256-bit entropy); validated against DB on every request; expiry enforced server-side  
-**Status**: ✅ MITIGATED
+### T7: Weak Password Hashing & Rainbow Table Attacks (Information Disclosure)
+- **Threat**: Database theft followed by offline hash cracking.
+- **Control**: Salted bcrypt (10 rounds); unsalted legacy SHA-256 hashes completely eradicated.
+- **Status**: ✅ **MITIGATED**
 
-### T5: Session reuse after logout
-**Vector**: Captured session cookie reused after victim logs out  
-**Impact**: Account takeover despite logout  
-**Control**: Logout calls `destroySession(db, token)` — deletes DB record; token is permanently unusable  
-**Status**: ✅ MITIGATED
+### T8: Cross-Site Request Forgery — CSRF (Tampering)
+- **Threat**: Malicious third-party website triggers state-changing actions on behalf of authenticated user.
+- **Control**: `SameSite=Strict` cookie policy + Double-Submit `X-CSRF-Token` header verification on all mutating requests.
+- **Status**: ✅ **MITIGATED**
 
-### T6: Brute-force / credential stuffing
-**Vector**: Automated login attempts against known email addresses  
-**Impact**: Account compromise  
-**Control**: 10 attempts / 15 minutes per IP; generic error messages prevent username enumeration; bcrypt makes each attempt slow (~100ms)  
-**Status**: ✅ MITIGATED
+### T9: Cross-Origin Resource Sharing Abuse (Information Disclosure)
+- **Threat**: Malicious domain makes credentialed fetch requests to read private student data.
+- **Control**: Explicit origin allowlist via `HOSTEL_ALLOWED_ORIGINS`; wildcards with credentials disallowed.
+- **Status**: ✅ **MITIGATED**
 
-### T7: Password hashing weakness (rainbow table attack)
-**Vector**: Database stolen; passwords recovered from SHA-256 hashes  
-**Impact**: Mass account compromise across university  
-**Control**: Passwords now hashed with bcrypt (10 rounds), with unique salt per hash; rainbow tables ineffective  
-**Status**: ✅ MITIGATED (was SHA-256 unsalted)
+### T10: Malicious Executable Upload (Tampering / Remote Code Execution)
+- **Threat**: Attacker uploads `.php`, `.exe`, or `.js` script disguised as an image.
+- **Control**: MIME allowlist + byte-level magic signature verification for JPEG, PNG, GIF, WebP, and PDF; forced `attachment` disposition.
+- **Status**: ✅ **MITIGATED**
 
-### T8: XSS via grievance content
-**Vector**: Student submits `<script>alert(1)</script>` in title/description  
-**Impact**: Session hijacking (if cookie was not HttpOnly)  
-**Control**: React/Svelte escapes rendered text by default; session cookie is HttpOnly (JS cannot read it); CSP disallows inline scripts from API responses  
-**Status**: ✅ MITIGATED (multiple layers)
+### T11: Path Traversal via Filenames (Tampering / Information Disclosure)
+- **Threat**: Filenames like `../../../../etc/passwd` used to overwrite or read system files.
+- **Control**: Physical disk files named exclusively with server-generated UUIDs; canonical path resolution checks.
+- **Status**: ✅ **MITIGATED**
 
-### T9: CSRF — attacker triggers state change via third-party site
-**Vector**: Malicious site causes authenticated user's browser to make POST requests  
-**Impact**: Grievance modification, status change  
-**Control**: SameSite=Strict cookies prevent cross-site cookie transmission; CORS allowlist prevents unauthorized origins  
-**Status**: ✅ MITIGATED
+### T12: SQL Injection (Tampering / Information Disclosure)
+- **Threat**: SQL metacharacters injected into search, filters, or form bodies.
+- **Control**: Prepared statements with parameterized arguments across all `better-sqlite3` database queries.
+- **Status**: ✅ **MITIGATED**
 
-### T10: CORS abuse — cross-origin credentialed requests
-**Vector**: `evil.com` page makes credentialed fetch to the API  
-**Impact**: Data theft if CORS reflected arbitrary origins  
-**Control**: CORS configured with explicit allowlist; untrusted origins not reflected; wildcard + credentials removed  
-**Status**: ✅ MITIGATED (was wildcard + credentials)
+### T13: Internal Stack Trace & Schema Leakage (Information Disclosure)
+- **Threat**: Provoking server errors to reveal internal filesystem paths and database schema details.
+- **Control**: Global `handleError` sanitizes unexpected errors, returning generic `"An unexpected error occurred."` while logging details to server logs.
+- **Status**: ✅ **MITIGATED**
 
-### T11: Malicious file upload (executable content)
-**Vector**: Upload a `.php`, `.js`, or script file disguised as an image  
-**Impact**: Remote code execution if served from a web-accessible path  
-**Control**: MIME type allowlist (JPEG/PNG/GIF/WebP only); magic byte validation rejects mismatched content; stored name is server-generated UUID; Content-Disposition: attachment prevents inline execution  
-**Status**: ✅ MITIGATED
+### T14: Formula Injection / CSV Injection in Audit Export (Tampering / Client-Side Execution)
+- **Threat**: Attacker registers with name `=cmd|'/c calc'!A1` and admin exports audit logs to CSV.
+- **Control**: `sanitizeCsvCell()` prefixes all formula trigger characters (`=`, `+`, `-`, `@`, `\t`, `\r`) with a single quote (`'`).
+- **Status**: ✅ **MITIGATED**
 
-### T12: Path traversal via uploaded filename
-**Vector**: `../../etc/passwd.png` as filename in multipart upload  
-**Impact**: File overwrite, arbitrary file read  
-**Control**: Stored filename always server-generated UUID — user filename never used as filesystem path; canonical path validation on read  
-**Status**: ✅ MITIGATED
+### T15: Stored Cross-Site Scripting (XSS) in Discussion & Reviews (Tampering)
+- **Threat**: Submitting `<script>` or event handlers in comments, grievance descriptions, or review feedback.
+- **Control**: Frontend uses Svelte automatic HTML escaping; raw `{@html}` rendering removed from all user content.
+- **Status**: ✅ **MITIGATED**
 
-### T13: SQL injection
-**Vector**: SQL metacharacters in grievance ID, title, email, etc.  
-**Impact**: Data breach, database corruption  
-**Control**: All queries use parameterized better-sqlite3 prepared statements; no string concatenation with user input  
-**Status**: ✅ MITIGATED (no raw SQL with user input found)
+### T16: Storage Exhaustion via Orphaned Files (Denial of Service)
+- **Threat**: Deleting grievances or users leaves heavy attachments on disk until server storage fills up.
+- **Control**: `deleteGrievance` and `deleteUser` call `deleteStoredFile()` to unlink physical files before deleting database rows.
+- **Status**: ✅ **MITIGATED**
 
-### T14: Internal error leakage (information disclosure)
-**Vector**: Triggering server errors to read stack traces, DB schema, or filesystem paths  
-**Impact**: Reconnaissance; reveals attack surface  
-**Control**: Unexpected errors logged server-side; clients receive only `"An unexpected error occurred."`  
-**Status**: ✅ MITIGATED (was leaking raw err.message)
+### T17: Cross-Warden Isolation & Unauthorized Resident Deletion (Tampering)
+- **Threat**: Warden A attempts to modify or delete students assigned to Warden B.
+- **Control**: Warden authorization in `/api/users/:id` checks `targetUser.warden_id === user.id`.
+- **Status**: ✅ **MITIGATED**
 
-### T15: Session token XSS theft
-**Vector**: XSS payload reads `document.cookie`  
-**Impact**: Session hijacking  
-**Control**: HttpOnly cookie flag prevents JS from reading the token  
-**Status**: ✅ MITIGATED
-
-### T16: Mass assignment — client-supplied sensitive fields
-**Vector**: POST/PATCH with extra fields like `{"role": "warden", "student_id": "different-user"}`  
-**Impact**: Privilege escalation, IDOR  
-**Control**: Only explicitly extracted fields are used (title, description, category, status); server always uses `user.id` from session for ownership  
-**Status**: ✅ MITIGATED
+### T18: Resolution Review Forgery (Tampering)
+- **Threat**: Attacker or staff submits fake 5-star ratings on unresolved grievances.
+- **Control**: `/api/grievances/:id/review` validates that grievance is `resolved`, caller is the student owner, review does not already exist, and a valid photo proof is attached.
+- **Status**: ✅ **MITIGATED**
 
 ---
 
-## 6. Residual Risks
+## 6. Blast-Radius Analysis
 
-| Risk | Severity | Notes |
-|---|---|---|
-| In-memory rate limiter resets on restart | LOW | Acceptable for university deployment; use Redis for multi-instance |
-| No antivirus scanning of uploads | MEDIUM | Images only accepted; magic bytes validated; re-encoding would further reduce risk |
-| localStorage user cache (role/id) | LOW | Not a security boundary; server-side auth is authoritative; XSS impact is session theft via HttpOnly cookie workaround only |
-| SQLite not multi-user safe under high concurrency | LOW | WAL mode configured; acceptable for university scale |
-| No HSTS header from application | LOW | Should be set by reverse proxy (nginx/caddy) terminating TLS |
-| Warden can see all student grievances | BY DESIGN | Required for the warden review workflow |
-| Session TTL is 7 days | LOW | Reasonable; consider shortening for high-security deployments |
-| No MFA | MEDIUM | Out of scope for current implementation; recommended for admin accounts |
+| Compromised Boundary | Attacker Access | Confined / Protected Boundary |
+| :--- | :--- | :--- |
+| **Student Session Token** | View/comment/review own grievances only | Cannot view other students' data, cannot view warden/admin tools, cannot access database |
+| **Warden Session Token** | Manage assigned students, triage assigned grievances, post hostel notices | Cannot access other wardens' students, cannot modify admin accounts, cannot delete DB |
+| **Upload Directory Access** | Read stored UUID image/PDF files | Cannot execute code (no interpreter), cannot read database or `.env` file |
+| **Database File Exposure** | Bcrypt password hashes (slow to brute-force), grievance records, SHA-256 token hashes | Host OS credentials protected; active sessions cannot be reversed from SHA-256 hashes |
 
 ---
 
-## 7. Blast-Radius Analysis
+## 7. Residual Risks & Future Hardening Recommendations
 
-| Compromised Boundary | Attacker Can Access | Cannot Access |
-|---|---|---|
-| Student session token | That student's grievances, comments, attachments | Other students' data; warden functions; database |
-| Warden session token | All grievances (read); status updates; all attachments | Database credentials; filesystem outside uploads; other warden accounts |
-| Upload directory | The uploaded image files | Database; source code; credentials; other students' data directly |
-| Application process | Database file (if same OS user); uploads | Host OS credentials; other processes |
-| Database file | Bcrypt hashes (not crackable without brute force); grievance data | Application server; filesystem |
+1. **Multi-Factor Authentication (MFA)**:
+   - *Risk*: Password compromise allows unauthorized access.
+   - *Recommendation*: Introduce TOTP (Authenticator App) MFA for Administrator and Warden accounts.
+2. **Distributed Rate Limiting (Redis)**:
+   - *Risk*: In-memory rate limiting store resets upon process restart.
+   - *Recommendation*: Connect to a Redis cluster for multi-instance high-availability deployments.
+3. **ClamAV / Antivirus Scanning**:
+   - *Risk*: Advanced steganography or malicious PDF structures.
+   - *Recommendation*: Integrate asynchronous antivirus streaming (e.g. ClamAV daemon) for uploaded attachments.
+4. **Sandboxed Static Asset Domain**:
+   - *Risk*: Inline PDF execution on the same origin.
+   - *Recommendation*: Host file downloads on an isolated domain (e.g. `https://attachments-cdn.university.edu`).

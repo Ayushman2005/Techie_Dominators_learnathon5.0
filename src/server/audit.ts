@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { insertAuditLog, type InsertAuditLogInput } from './db/queries.ts';
 import { securityLog, type SecurityEventType } from './logger.ts';
 import type { AuditLogRow } from './types/index.ts';
+<<<<<<< HEAD
 import { TRUST_PROXY } from './config.ts';
 
 export function getClientIp(c: Context): string {
@@ -23,6 +24,9 @@ export function getClientIp(c: Context): string {
 /**
  * Record an audit log event in the database and emit structured console log.
  */
+=======
+import { getClientIp } from './middleware/ratelimit.ts';
+>>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 export function recordAuditLog(
 	c: Context,
 	db: Database,
@@ -34,7 +38,6 @@ export function recordAuditLog(
 		ipAddress
 	});
 
-	// Synchronize with existing security logger if applicable
 	const securityEvents: Record<string, SecurityEventType> = {
 		'auth.login_success': 'login_success',
 		'auth.login_failed': 'login_failure',
