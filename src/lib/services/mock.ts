@@ -231,6 +231,7 @@ class MockGrievanceService implements GrievanceService {
 			title: input.title,
 			category: input.category,
 			description: input.description,
+			availableTime: input.availableTime,
 			status: 'Open',
 			studentId: input.studentId,
 			student,

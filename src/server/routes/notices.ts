@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
 import type { AppEnv } from '../env.ts';
 import { requireUser, requireWardenOrAdmin } from '../auth/session.ts';
-
 import { HttpError } from '../http/errors.ts';
+import { recordAuditLog } from '../audit.ts';
 
 export const noticeRoutes = new Hono<AppEnv>();
 
@@ -85,6 +85,19 @@ noticeRoutes.post('/', async (c) => {
 		VALUES (?, ?, ?, ?, ?, ?)
 	`).run(id, user.id, title.trim(), noticeBody.trim(), finalTarget, now);
 
+	recordAuditLog(c, db, {
+		eventType: 'user.created',
+		action: `Published notice: ${title.trim()}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: id,
+		targetType: 'notice',
+		details: { title: title.trim(), hostelId: finalTarget },
+		status: 'success'
+	});
+
 	const notice = db.prepare(`
 		SELECT n.*, u.name as author_name, u.role as author_role 
 		FROM notices n JOIN users u ON n.author_id = u.id 
@@ -101,7 +114,7 @@ noticeRoutes.delete('/:id', (c) => {
 	requireWardenOrAdmin(user);
 	const id = c.req.param('id');
 
-	const notice = db.prepare('SELECT * FROM notices WHERE id = ?').get(id) as { author_id: string } | undefined;
+	const notice = db.prepare('SELECT * FROM notices WHERE id = ?').get(id) as { title: string; author_id: string } | undefined;
 	if (!notice) {
 		throw new HttpError(404, 'not_found', 'Notice not found');
 	}
@@ -111,5 +124,19 @@ noticeRoutes.delete('/:id', (c) => {
 	}
 
 	db.prepare('DELETE FROM notices WHERE id = ?').run(id);
+
+	recordAuditLog(c, db, {
+		eventType: 'user.deleted',
+		action: `Deleted notice: ${notice.title}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: id,
+		targetType: 'notice',
+		details: { title: notice.title },
+		status: 'success'
+	});
+
 	return c.json({ success: true });
 });

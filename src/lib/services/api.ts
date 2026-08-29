@@ -252,6 +252,7 @@ class ApiGrievanceService implements GrievanceService {
 			form.set('title', input.title);
 			form.set('category', input.category);
 			form.set('description', input.description);
+			if (input.availableTime) form.set('availableTime', input.availableTime);
 			form.set('file', file);
 			res = await apiFetch('/api/grievances', { method: 'POST', credentials: 'include', body: form });
 		} else {
@@ -262,7 +263,8 @@ class ApiGrievanceService implements GrievanceService {
 				body: JSON.stringify({
 					title: input.title,
 					category: input.category,
-					description: input.description
+					description: input.description,
+					availableTime: input.availableTime
 				})
 			});
 		}

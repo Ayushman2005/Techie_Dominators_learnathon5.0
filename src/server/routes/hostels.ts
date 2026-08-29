@@ -4,13 +4,14 @@ import type { AppEnv } from '../env.ts';
 import { requireUser, requireAdmin } from '../auth/session.ts';
 import { csrfProtection } from '../middleware/csrf.ts';
 import { HttpError } from '../http/errors.ts';
+import { recordAuditLog } from '../audit.ts';
 
 export const hostelRoutes = new Hono<AppEnv>();
 
 // GET /api/hostels - List all hostels
 hostelRoutes.get('/', (c) => {
 	const db = c.get('db');
-	const user = requireUser(c, db); // Anyone logged in can view hostels
+	requireUser(c, db); // Anyone logged in can view hostels
 
 	const hostels = db.prepare('SELECT * FROM hostels ORDER BY name ASC').all();
 	return c.json({ data: hostels });
@@ -42,27 +43,18 @@ hostelRoutes.post('/', csrfProtection, async (c) => {
 		VALUES (?, ?, ?)
 	`).run(id, name.trim(), now);
 
-	// Log audit event
-	try {
-		db.prepare(`
-			INSERT INTO audit_logs (id, event_type, action, actor_id, actor_name, actor_email, actor_role, target_id, target_type, status, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`).run(
-			`log-${randomUUID()}`,
-			'hostel_created',
-			'Created hostel',
-			user.id,
-			user.name,
-			user.email,
-			user.role,
-			id,
-			'hostel',
-			'success',
-			new Date().toISOString()
-		);
-	} catch (e) {
-		console.error('Failed to write audit log:', e);
-	}
+	recordAuditLog(c, db, {
+		eventType: 'user.created',
+		action: `Created hostel: ${name.trim()}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: id,
+		targetType: 'hostel',
+		details: { name: name.trim() },
+		status: 'success'
+	});
 
 	const newHostel = db.prepare('SELECT * FROM hostels WHERE id = ?').get(id);
 	return c.json({ data: newHostel }, 201);
@@ -77,7 +69,6 @@ hostelRoutes.delete('/:id', csrfProtection, (c) => {
 
 	// Disallow deleting the default hostel if it exists and we rely on it, but generally admins can delete.
 	if (id === 'hst-default') {
-		// Just to prevent them from completely breaking the system accidentally
 		throw new HttpError(403, 'unauthorized', 'Cannot delete the default system hostel. Rename it instead if needed.');
 	}
 
@@ -88,28 +79,18 @@ hostelRoutes.delete('/:id', csrfProtection, (c) => {
 
 	db.prepare('DELETE FROM hostels WHERE id = ?').run(id);
 
-	// Log audit event
-	try {
-		db.prepare(`
-			INSERT INTO audit_logs (id, event_type, action, actor_id, actor_name, actor_email, actor_role, target_id, target_type, details, status, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`).run(
-			`log-${randomUUID()}`,
-			'hostel_deleted',
-			'Deleted hostel',
-			user.id,
-			user.name,
-			user.email,
-			user.role,
-			id,
-			'hostel',
-			JSON.stringify({ name: existing.name }),
-			'success',
-			new Date().toISOString()
-		);
-	} catch (e) {
-		console.error('Failed to write audit log:', e);
-	}
+	recordAuditLog(c, db, {
+		eventType: 'user.deleted',
+		action: `Deleted hostel: ${existing.name}`,
+		actorId: user.id,
+		actorName: user.name,
+		actorEmail: user.email,
+		actorRole: user.role,
+		targetId: id,
+		targetType: 'hostel',
+		details: { name: existing.name },
+		status: 'success'
+	});
 
 	return c.json({ message: 'Hostel deleted' });
 });
