@@ -1524,7 +1524,7 @@ describe('HostelGrievance Security Tests', () => {
 				body: JSON.stringify({
 					name: maliciousName,
 					email: 'formula@example.test',
-					password: 'password123',
+					password: 'password123456',
 					role: 'student',
 					rollNo: '24BCE9999',
 					wardenId: 'war-1'
@@ -1533,7 +1533,7 @@ describe('HostelGrievance Security Tests', () => {
 			expect(res.status).toBe(201);
 
 			// Malicious user signs in so actorName starts with formula character
-			await login(app, 'formula@example.test', 'password123');
+			await login(app, 'formula@example.test', 'password123456');
 
 			const exportRes = await app.request('/api/audit-logs/export?format=csv', {
 				headers: { Cookie: admCookie }
