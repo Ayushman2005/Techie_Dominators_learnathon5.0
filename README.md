@@ -26,6 +26,18 @@
 
 </div>
 
+## 👥 Team — Techie Dominators
+
+> Submitted for **Learnathon 5.0** — Web Application Security & Hardening Track
+
+| # | Name | Role |
+|---|------|------|
+| 1 | **Ayushman Kar** | Lead Developer |
+| 2 | **Kaushik Mohanty** | Backend & Security |
+| 3 | **Ayush Raj** | Frontend & UI |
+
+---
+
 ## 🌟 Key Highlights
 
 - 🔒 **Zero-Trust Role-Based Access Control (RBAC)**: Strict server-side separation across **Admin**, **Warden**, and **Student** portals.
