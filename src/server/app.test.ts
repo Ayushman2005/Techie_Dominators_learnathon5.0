@@ -366,7 +366,7 @@ describe('HostelGrievance Security Tests', () => {
 			expect(res.status).toBe(409);
 		});
 
-		it('stores uploaded picture in both the database and the uploads folder on grievance creation', async () => {
+		it('stores uploaded picture in the uploads folder and references in database on grievance creation', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const form = new FormData();
 			form.append('title', 'Ceiling paint peeling in room');
@@ -387,11 +387,10 @@ describe('HostelGrievance Security Tests', () => {
 			const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(attId) as {
 				id: string;
 				stored_filename: string;
-				data: Buffer;
+				data: Buffer | null;
 			};
 			expect(row).toBeDefined();
-			expect(row.data).toBeDefined();
-			expect(Buffer.from(row.data).equals(PNG)).toBe(true);
+			expect(row.data).toBeNull();
 
 			const uploadPath = join(dir, 'uploads', row.stored_filename);
 			expect(existsSync(uploadPath)).toBe(true);
@@ -399,7 +398,7 @@ describe('HostelGrievance Security Tests', () => {
 			expect(diskBytes.equals(PNG)).toBe(true);
 		});
 
-		it('stores uploaded picture in both the database and the uploads folder on attachment upload', async () => {
+		it('stores uploaded picture in the uploads folder and references in database on attachment upload', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const form = new FormData();
 			form.append('file', new File([JPEG], 'tap-detail.jpg', { type: 'image/jpeg' }));
@@ -416,11 +415,10 @@ describe('HostelGrievance Security Tests', () => {
 			const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(attId) as {
 				id: string;
 				stored_filename: string;
-				data: Buffer;
+				data: Buffer | null;
 			};
 			expect(row).toBeDefined();
-			expect(row.data).toBeDefined();
-			expect(Buffer.from(row.data).equals(JPEG)).toBe(true);
+			expect(row.data).toBeNull();
 
 			const uploadPath = join(dir, 'uploads', row.stored_filename);
 			expect(existsSync(uploadPath)).toBe(true);
@@ -428,7 +426,7 @@ describe('HostelGrievance Security Tests', () => {
 			expect(diskBytes.equals(JPEG)).toBe(true);
 		});
 
-		it('serves attachment from database fallback if disk file is removed', async () => {
+		it('returns 404 if disk file is removed', async () => {
 			const { cookie } = await login(app, 'student@example.test', 'student123');
 			const row = db.prepare('SELECT stored_filename FROM attachments WHERE id = ?').get('att-1') as {
 				stored_filename: string;
@@ -440,9 +438,7 @@ describe('HostelGrievance Security Tests', () => {
 			expect(existsSync(diskFile)).toBe(false);
 
 			const res = await app.request('/api/attachments/att-1', { headers: { Cookie: cookie } });
-			expect(res.status).toBe(200);
-			const bytes = Buffer.from(await res.arrayBuffer());
-			expect(bytes.equals(JPEG)).toBe(true);
+			expect(res.status).toBe(404);
 		});
 	});
 
@@ -1476,5 +1472,118 @@ describe('HostelGrievance Security Tests', () => {
 			expect(json.data.some((w: any) => w.empId === 'EMP-1001')).toBe(true);
 		});
 	});
-});
 
+	describe('Security Hardening & Protection Verifications', () => {
+		it('warden can only delete students assigned to them, and cannot delete students assigned to other wardens', async () => {
+			const { cookie: war1Cookie } = await login(app, 'warden@example.test', 'warden123');
+
+			const deleteUnauthorized = await app.request('/api/users/stu-3', {
+				method: 'DELETE',
+				headers: { Cookie: war1Cookie }
+			});
+			expect(deleteUnauthorized.status).toBe(403);
+			const unauthJson = await deleteUnauthorized.json();
+			expect(unauthJson.error).toContain('assigned to you');
+
+			const deleteWarden = await app.request('/api/users/war-2', {
+				method: 'DELETE',
+				headers: { Cookie: war1Cookie }
+			});
+			expect(deleteWarden.status).toBe(403);
+
+			const deleteOwnStudent = await app.request('/api/users/stu-2', {
+				method: 'DELETE',
+				headers: { Cookie: war1Cookie }
+			});
+			expect(deleteOwnStudent.status).toBe(200);
+		});
+
+		it('cross-warden authorization prevents warden from viewing, commenting, or updating grievances of non-assigned students', async () => {
+			const { cookie: war1Cookie } = await login(app, 'warden@example.test', 'warden123');
+
+			const viewRes = await app.request('/api/grievances/GRV-0004', { headers: { Cookie: war1Cookie } });
+			expect(viewRes.status).toBe(403);
+
+			const commentRes = await app.request('/api/grievances/GRV-0004/comments', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: war1Cookie },
+				body: JSON.stringify({ body: 'Unauthorized warden comment' })
+			});
+			expect(commentRes.status).toBe(403);
+
+			const patchRes = await app.request('/api/grievances/GRV-0004', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json', Cookie: war1Cookie },
+				body: JSON.stringify({ status: 'In Progress' })
+			});
+			expect(patchRes.status).toBe(403);
+		});
+
+		it('session tokens are stored in SQLite as SHA-256 hashes rather than plaintext', async () => {
+			const { cookie } = await login(app, 'student@example.test', 'student123');
+			const rawToken = cookie.split('hg_session=')[1]?.split(';')[0];
+			expect(rawToken).toBeDefined();
+
+			const sessions = db.prepare('SELECT token, user_id FROM sessions WHERE user_id = ?').all('stu-1') as { token: string }[];
+			expect(sessions.length).toBeGreaterThan(0);
+			expect(sessions[0].token).not.toBe(rawToken);
+			expect(sessions[0].token).toMatch(/^[a-f0-9]{64}$/);
+		});
+
+		it('sanitizes spreadsheet formula control characters in CSV audit log export', async () => {
+			const { cookie: admCookie } = await login(app, 'admin@example.test', 'admin123');
+
+			const maliciousName = '=HYPERLINK("http://evil.test","Click")';
+			const res = await app.request('/api/users', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Cookie: admCookie },
+				body: JSON.stringify({
+					name: maliciousName,
+					email: 'formula@example.test',
+					password: 'password123',
+					role: 'student',
+					rollNo: '24BCE9999',
+					wardenId: 'war-1'
+				})
+			});
+			expect(res.status).toBe(201);
+
+			// Malicious user signs in so actorName starts with formula character
+			await login(app, 'formula@example.test', 'password123');
+
+			const exportRes = await app.request('/api/audit-logs/export?format=csv', {
+				headers: { Cookie: admCookie }
+			});
+			expect(exportRes.status).toBe(200);
+			const csvText = await exportRes.text();
+			expect(csvText).toContain(`"'=HYPERLINK`);
+		});
+
+		it('stores attachment binaries in filesystem and sets data to NULL in database', async () => {
+			const { cookie: stuCookie } = await login(app, 'student@example.test', 'student123');
+
+			const form = new FormData();
+			form.set('title', 'New Leak Report With Attachment');
+			form.set('category', 'Water');
+			form.set('description', 'There is continuous water dripping in the ceiling bathroom.');
+			form.set('file', new File([PNG], 'proof.png', { type: 'image/png' }));
+
+			const res = await app.request('/api/grievances', {
+				method: 'POST',
+				headers: { Cookie: stuCookie },
+				body: form
+			});
+			expect(res.status).toBe(201);
+			const json = await res.json();
+			const grievanceId = json.data.id;
+
+			const attRow = db.prepare('SELECT stored_filename, data FROM attachments WHERE grievance_id = ?').get(grievanceId) as { stored_filename: string; data: any };
+			expect(attRow).toBeDefined();
+			expect(attRow.data).toBeNull();
+
+			const attId = json.data.attachments[0].id;
+			const dlRes = await app.request(`/api/attachments/${attId}`, { headers: { Cookie: stuCookie } });
+			expect(dlRes.status).toBe(200);
+		});
+	});
+});

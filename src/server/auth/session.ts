@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -15,19 +15,26 @@ function expiryIso(): string {
 	return new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
 }
 
+export function hashToken(token: string): string {
+	return createHash('sha256').update(token).digest('hex');
+}
+
 export function createSession(db: Database, userId: string): string {
-	const token = randomBytes(32).toString('base64url');
+	const rawToken = randomBytes(32).toString('base64url');
+	const tokenHash = hashToken(rawToken);
 	db.prepare(
 		'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
-	).run(token, userId, nowIso(), expiryIso());
-	return token;
+	).run(tokenHash, userId, nowIso(), expiryIso());
+	return rawToken;
 }
 
-export function destroySession(db: Database, token: string): void {
-	db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+export function destroySession(db: Database, rawToken: string): void {
+	const tokenHash = hashToken(rawToken);
+	db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash);
 }
 
-export function readSessionUser(db: Database, token: string): SessionUser | undefined {
+export function readSessionUser(db: Database, rawToken: string): SessionUser | undefined {
+	const tokenHash = hashToken(rawToken);
 	const row = db
 		.prepare(
 			`SELECT u.id, u.name, u.email, u.role, u.room, u.created_at, s.expires_at
@@ -35,10 +42,10 @@ export function readSessionUser(db: Database, token: string): SessionUser | unde
        JOIN users u ON u.id = s.user_id
        WHERE s.token = ?`
 		)
-		.get(token) as (SessionUser & { expires_at: string }) | undefined;
+		.get(tokenHash) as (SessionUser & { expires_at: string }) | undefined;
 	if (!row) return undefined;
 	if (new Date(row.expires_at) <= new Date()) {
-		db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+		db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash);
 		return undefined;
 	}
 	return {

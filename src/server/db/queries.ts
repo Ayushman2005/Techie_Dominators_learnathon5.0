@@ -252,11 +252,17 @@ export function deleteGrievance(db: Database, id: string, uploadsDir: string = D
 	db.prepare('DELETE FROM grievances WHERE id = ?').run(id);
 }
 
-export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): void {
+export function assertCanViewGrievance(db: Database, user: SessionUser, row: GrievanceRow): void {
 	switch (user.role) {
 		case 'admin':
-		case 'warden':
 			return;
+		case 'warden': {
+			const student = findUserById(db, row.student_id);
+			if (!student || student.warden_id !== user.id) {
+				throw new HttpError(403, 'unauthorized', 'You cannot access grievances for students not assigned to you.');
+			}
+			return;
+		}
 		case 'student':
 			if (row.student_id !== user.id) {
 				throw new HttpError(403, 'unauthorized', 'You cannot access this grievance.');

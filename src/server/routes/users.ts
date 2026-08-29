@@ -467,6 +467,24 @@ userRoutes.delete('/:id', (c) => {
 		throw new HttpError(403, 'unauthorized', 'Wardens cannot delete warden accounts.');
 	}
 
+	if (user.role === 'warden') {
+		if (targetUser.role !== 'student' || targetUser.warden_id !== user.id) {
+			recordAuditLog(c, db, {
+				eventType: 'auth.unauthorized',
+				action: 'Warden attempted to delete unauthorized student account',
+				actorId: user.id,
+				actorName: user.name,
+				actorEmail: user.email,
+				actorRole: user.role,
+				targetId: targetUser.id,
+				targetType: 'user',
+				details: { reason: 'warden_cannot_delete_non_assigned_student' },
+				status: 'warning'
+			});
+			throw new HttpError(403, 'unauthorized', 'You can only delete students assigned to you.');
+		}
+	}
+
 	deleteUser(db, targetId, c.get('uploadsDir'));
 
 	recordAuditLog(c, db, {

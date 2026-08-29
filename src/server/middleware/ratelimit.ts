@@ -8,10 +8,71 @@ interface RateLimitConfig {
 	message?: string;
 }
 
-const store = new Map<string, number[]>();
+export interface RateLimitStore {
+	get(key: string): Promise<number[]> | number[];
+	set(key: string, timestamps: number[]): Promise<void> | void;
+	clear(): Promise<void> | void;
+}
+
+export class InMemoryRateLimitStore implements RateLimitStore {
+	private store = new Map<string, number[]>();
+
+	get(key: string): number[] {
+		return this.store.get(key) ?? [];
+	}
+
+	set(key: string, timestamps: number[]): void {
+		this.store.set(key, timestamps);
+	}
+
+	clear(): void {
+		this.store.clear();
+	}
+
+	prune(maxAgeMs: number): void {
+		const now = Date.now();
+		for (const [key, timestamps] of this.store.entries()) {
+			const pruned = timestamps.filter((t) => t > now - maxAgeMs);
+			if (pruned.length === 0) {
+				this.store.delete(key);
+			} else {
+				this.store.set(key, pruned);
+			}
+		}
+	}
+}
+
+let activeStore: RateLimitStore = new InMemoryRateLimitStore();
+
+export function setRateLimitStore(store: RateLimitStore): void {
+	activeStore = store;
+}
 
 export function resetRateLimitStore(): void {
-	store.clear();
+	activeStore.clear();
+}
+
+export function isTrustProxy(): boolean {
+	const env = process.env.TRUST_PROXY;
+	return env === 'true' || env === '1';
+}
+
+export function getClientIp(c: Context): string {
+	if (isTrustProxy()) {
+		const forwarded = c.req.header('x-forwarded-for');
+		if (forwarded) {
+			const first = forwarded.split(',')[0].trim();
+			if (first) return first;
+		}
+		const realIp = c.req.header('x-real-ip');
+		if (realIp && realIp.trim()) return realIp.trim();
+	}
+
+	const rawReq = c.req.raw as unknown as { socket?: { remoteAddress?: string } };
+	const socketIp = rawReq?.socket?.remoteAddress;
+	if (socketIp) return socketIp;
+
+	return '127.0.0.1';
 }
 
 function pruneWindow(timestamps: number[], windowStart: number): number[] {
@@ -23,8 +84,7 @@ function getKey(c: Context, useUserId: boolean): string {
 		const userId = c.get('rateLimitUserId' as never) as string | undefined;
 		if (userId) return `user:${userId}`;
 	}
-	const forwarded = c.req.header('x-forwarded-for');
-	const ip = forwarded ? forwarded.split(',')[0].trim() : (c.req.header('x-real-ip') ?? 'unknown');
+	const ip = getClientIp(c);
 	return `ip:${ip}`;
 }
 
@@ -36,7 +96,7 @@ export function rateLimitMiddleware(config: RateLimitConfig, useUserId = false) 
 		const now = Date.now();
 		const windowStart = now - windowMs;
 
-		const current = store.get(key) ?? [];
+		const current = (await activeStore.get(key)) ?? [];
 		const active = pruneWindow(current, windowStart);
 
 		if (active.length >= maxRequests) {
@@ -54,7 +114,7 @@ export function rateLimitMiddleware(config: RateLimitConfig, useUserId = false) 
 		}
 
 		active.push(now);
-		store.set(key, active);
+		await activeStore.set(key, active);
 
 		c.header('X-RateLimit-Limit', String(maxRequests));
 		c.header('X-RateLimit-Remaining', String(maxRequests - active.length));
@@ -92,14 +152,8 @@ export const commentRateLimit = rateLimitMiddleware(
 
 setInterval(
 	() => {
-		const now = Date.now();
-		for (const [key, timestamps] of store.entries()) {
-			const pruned = pruneWindow(timestamps, now - 60 * 60 * 1000);
-			if (pruned.length === 0) {
-				store.delete(key);
-			} else {
-				store.set(key, pruned);
-			}
+		if (activeStore instanceof InMemoryRateLimitStore) {
+			activeStore.prune(60 * 60 * 1000);
 		}
 	},
 	30 * 60 * 1000

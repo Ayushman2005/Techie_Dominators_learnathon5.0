@@ -3,17 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { insertAuditLog, type InsertAuditLogInput } from './db/queries.ts';
 import { securityLog, type SecurityEventType } from './logger.ts';
 import type { AuditLogRow } from './types/index.ts';
-
-export function getClientIp(c: Context): string {
-	const forwarded = c.req.header('x-forwarded-for');
-	if (forwarded) {
-		const first = forwarded.split(',')[0].trim();
-		if (first) return first;
-	}
-	const realIp = c.req.header('x-real-ip');
-	if (realIp) return realIp.trim();
-	return '127.0.0.1';
-}
+import { getClientIp } from './middleware/ratelimit.ts';
 
 export function recordAuditLog(
 	c: Context,

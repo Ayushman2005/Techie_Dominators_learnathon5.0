@@ -22,7 +22,7 @@ attachmentRoutes.get('/:id', (c) => {
 		throw new HttpError(404, 'not_found', 'Attachment was not found.');
 	}
 
-	assertCanViewGrievance(user, grievanceRow);
+	assertCanViewGrievance(db, user, grievanceRow);
 
 	let bytes: Buffer | Uint8Array;
 	try {

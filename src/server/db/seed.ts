@@ -488,7 +488,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 				stored_filename: stored,
 				mime_type: file.mime_type,
 				size_bytes: file.bytes.byteLength,
-				data: file.bytes,
+				data: null,
 				created_at: file.created_at
 			});
 		}

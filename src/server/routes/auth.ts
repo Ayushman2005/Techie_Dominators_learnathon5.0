@@ -4,6 +4,7 @@ import {
 	clearSessionCookie,
 	createSession,
 	destroySession,
+	hashToken,
 	optionalToken,
 	requireUser,
 	setSessionCookie
@@ -74,7 +75,8 @@ authRoutes.post('/logout', (c) => {
 	const db = c.get('db');
 	const token = optionalToken(c);
 	if (token) {
-		const sessionRow = db.prepare('SELECT user_id FROM sessions WHERE token = ?').get(token) as { user_id: string } | undefined;
+		const tokenHash = hashToken(token);
+		const sessionRow = db.prepare('SELECT user_id FROM sessions WHERE token = ?').get(tokenHash) as { user_id: string } | undefined;
 		const user = sessionRow ? findUserById(db, sessionRow.user_id) : undefined;
 
 		destroySession(db, token);

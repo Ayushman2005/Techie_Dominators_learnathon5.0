@@ -151,7 +151,7 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 		writeStoredFile(uploadsDir, stored, bytes);
 		db.prepare(
 			`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, data, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
 		).run(
 			nextAttachmentId(db),
 			id,
@@ -159,7 +159,6 @@ grievanceRoutes.post('/', createGrievanceRateLimit, async (c) => {
 			stored,
 			upload.type,
 			bytes.byteLength,
-			bytes,
 			ts
 		);
 		recordAuditLog(c, db, {
@@ -187,7 +186,7 @@ grievanceRoutes.get('/:id/comments', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
-	assertCanViewGrievance(user, row);
+	assertCanViewGrievance(db, user, row);
 	const comments = listCommentRows(db, row.id).map((comment) => {
 		const authorRow = findUserById(db, comment.author_id);
 		if (!authorRow) {
@@ -203,7 +202,7 @@ grievanceRoutes.post('/:id/comments', commentRateLimit, async (c) => {
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
 
-	assertCanViewGrievance(user, row);
+	assertCanViewGrievance(db, user, row);
 
 	let body: unknown;
 	try {
@@ -290,8 +289,8 @@ grievanceRoutes.post('/:id/attachments', async (c) => {
 	const id = nextAttachmentId(db);
 	db.prepare(
 		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, data, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	).run(id, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, bytes, ts);
+     VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
+	).run(id, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, ts);
 	touchGrievance(db, row.id, ts);
 
 	recordAuditLog(c, db, {
@@ -386,8 +385,8 @@ grievanceRoutes.post('/:id/review', async (c) => {
 	const attId = nextAttachmentId(db);
 	db.prepare(
 		`INSERT INTO attachments (id, grievance_id, original_filename, stored_filename, mime_type, size_bytes, data, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	).run(attId, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, bytes, ts);
+     VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
+	).run(attId, row.id, originalBasename(upload.name), stored, upload.type, bytes.byteLength, ts);
 
 	const revId = nextResolutionReviewId(db);
 	insertResolutionReview(db, {
@@ -426,7 +425,7 @@ grievanceRoutes.get('/:id/review', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
-	assertCanViewGrievance(user, row);
+	assertCanViewGrievance(db, user, row);
 	const grv = assembleGrievance(db, row);
 	return c.json({ data: grv.review ?? null });
 });
@@ -435,7 +434,7 @@ grievanceRoutes.get('/:id', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
-	assertCanViewGrievance(user, row);
+	assertCanViewGrievance(db, user, row);
 	return c.json({ data: assembleGrievance(db, row) });
 });
 
@@ -443,6 +442,7 @@ grievanceRoutes.patch('/:id', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
+	assertCanViewGrievance(db, user, row);
 
 	let body: unknown;
 	try {
