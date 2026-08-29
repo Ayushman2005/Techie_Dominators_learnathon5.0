@@ -54,7 +54,7 @@ export function readSessionUser(db: Database, rawToken: string): SessionUser | u
 	const msUntilExpiry = new Date(row.expires_at).getTime() - Date.now();
 	const renewThresholdMs = 24 * 60 * 60 * 1000; // 1 day
 	if (msUntilExpiry < renewThresholdMs) {
-		db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?').run(expiryIso(), token);
+		db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?').run(expiryIso(), tokenHash);
 	}
 	return {
 		id: row.id,
