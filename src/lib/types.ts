@@ -31,16 +31,11 @@ export interface User {
 	rollNo?: string | null;
 	studentId?: string | null;
 	empId?: string | null;
-<<<<<<< HEAD
 	/** Contact phone number. */
 	phone?: string | null;
 	/** Emergency contact number. */
 	emergencyContact?: string | null;
 	/** For students: assigned warden's user ID (1-to-1 mapping). */
-=======
-	phone?: string | null;
-	emergencyContact?: string | null;
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 	wardenId?: string | null;
 	warden?: User | null;
 	/** The hostel this user belongs to */

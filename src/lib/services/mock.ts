@@ -174,21 +174,6 @@ class MockUserService implements UserService {
 		};
 		return delay({ ok: true as const, data: stats });
 	}
-<<<<<<< HEAD
-
-	async updateMyProfile(input: { phone?: string | null; emergencyContact?: string | null }): Promise<Result<User>> {
-		const user = MOCK_USERS['usr-student-1']; // mock implementation
-		if (input.phone !== undefined) user.phone = input.phone;
-		if (input.emergencyContact !== undefined) user.emergencyContact = input.emergencyContact;
-		return delay({ ok: true as const, data: enrichUser(user) });
-	}
-
-	async changeMyPassword(current: string, next: string): Promise<Result<void>> {
-		return delay({ ok: true as const, data: undefined });
-	}
-}
-=======
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 
 	async updateMyProfile(input: { phone?: string | null; emergencyContact?: string | null }): Promise<Result<User>> {
 		const user = MOCK_USERS['usr-student-1']; // mock implementation
@@ -316,14 +301,6 @@ class MockGrievanceService implements GrievanceService {
 		}
 		return delay({ ok: true as const, data: g.review ? { ...g.review } : null });
 	}
-<<<<<<< HEAD
-
-	async getStats(): Promise<Result<any>> {
-		return delay({ ok: true as const, data: { total: grievances.length, open: 0, inProgress: 0, resolved: 0 } });
-	}
-}
-=======
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 
 	async getStats(): Promise<Result<any>> {
 		return delay({ ok: true as const, data: { total: grievances.length, open: 0, inProgress: 0, resolved: 0 } });

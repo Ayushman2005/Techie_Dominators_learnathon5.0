@@ -165,22 +165,13 @@
 	description="Complete overview and administration of student complaints and requests."
 >
 	{#snippet actions()}
-<<<<<<< HEAD
 		<div class="flex flex-col sm:flex-row flex-wrap w-full sm:w-auto items-stretch sm:items-center gap-2">
 			<Button variant="outline" size="sm" onclick={exportCsv} class="w-full sm:w-auto">
-=======
-		<div class="flex flex-wrap items-center gap-2">
-			<Button variant="outline" size="sm" onclick={exportCsv}>
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 				<DownloadIcon class="mr-1.5 size-3.5" />
 				Export CSV
 			</Button>
 
-<<<<<<< HEAD
 			<Button variant="outline" size="sm" onclick={exportJson} class="w-full sm:w-auto">
-=======
-			<Button variant="outline" size="sm" onclick={exportJson}>
->>>>>>> 453c5e2cb4dda84e8dd81061d403836ed12ed700
 				<FileTextIcon class="mr-1.5 size-3.5" />
 				Export JSON
 			</Button>
