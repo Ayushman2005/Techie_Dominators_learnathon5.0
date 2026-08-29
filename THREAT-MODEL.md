@@ -66,7 +66,7 @@
 ┌─────────────────────▼───────────────────────────────────┐
 │  Authentication & Identity Layer                        │
 │  Trust: Validates SHA-256 token hash against DB.        │
-│  Enforces server-side 7-day TTL and expiry checks.      │
+│  Enforces server-side 30-minute TTL and expiry checks.  │
 └─────────────────────┬───────────────────────────────────┘
                       │ Authenticated User Context
 ┌─────────────────────▼───────────────────────────────────┐

@@ -535,7 +535,7 @@ grievanceRoutes.patch('/:id', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	const row = requireGrievance(db, c.req.param('id')!);
-	assertCanViewGrievance(db, user, row);
+	assertCanViewGrievance(user, row, db);
 
 	let body: unknown;
 	try {

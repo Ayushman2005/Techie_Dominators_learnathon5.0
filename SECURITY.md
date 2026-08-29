@@ -79,7 +79,7 @@ Local Storage (uploads/)
   - `HttpOnly`: Prevents client-side scripts from reading the session token (mitigating XSS theft).
   - `SameSite=Strict`: Prevents cross-site cookie transmission for CSRF protection.
   - `Secure`: Enforced in production environments (`NODE_ENV === 'production'`).
-  - `Max-Age`: 7-day TTL with server-side validation on every request and active sliding-window renewal.
+  - `Max-Age`: 30-minute TTL (1,800 seconds) with server-side validation on every request and active sliding-window renewal (10 min threshold).
 - **Logout & Invalidation**: Calling `/api/logout` destroys the session record in the database immediately.
 
 ### 3.4 Double-Submit Cookie CSRF Protection (F-08)

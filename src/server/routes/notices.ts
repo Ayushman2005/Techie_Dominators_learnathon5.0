@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
 import type { AppEnv } from '../env.ts';
-import { requireUser, requireWardenOrAdmin, requireAdmin } from '../auth/session.ts';
-import { csrfProtection } from '../middleware/csrf.ts';
+import { requireUser, requireWardenOrAdmin } from '../auth/session.ts';
 import { HttpError } from '../http/errors.ts';
 
 export const noticeRoutes = new Hono<AppEnv>();
@@ -44,8 +43,8 @@ noticeRoutes.get('/', (c) => {
 	return c.json({ data: notices });
 });
 
-// POST /api/notices - Create a notice
-noticeRoutes.post('/', csrfProtection, async (c) => {
+// POST /api/notices - Create a notice (CSRF is already applied globally by app.use('/api/*', csrfProtection))
+noticeRoutes.post('/', async (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	requireWardenOrAdmin(user);
@@ -94,8 +93,8 @@ noticeRoutes.post('/', csrfProtection, async (c) => {
 	return c.json({ data: notice }, 201);
 });
 
-// DELETE /api/notices/:id - Delete a notice
-noticeRoutes.delete('/:id', csrfProtection, (c) => {
+// DELETE /api/notices/:id - Delete a notice (CSRF is already applied globally by app.use('/api/*', csrfProtection))
+noticeRoutes.delete('/:id', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
 	requireWardenOrAdmin(user);

@@ -48,11 +48,11 @@ export function readSessionUser(db: Database, rawToken: string): SessionUser | u
 		db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash);
 		return undefined;
 	}
-	// Sliding window renewal: if session expires within 24 hours, extend it.
+	// Sliding window renewal: if session expires within 10 minutes, extend it.
 	// This ensures active users are never unexpectedly logged out while idle
 	// users still get cleaned up after the full TTL.
 	const msUntilExpiry = new Date(row.expires_at).getTime() - Date.now();
-	const renewThresholdMs = 24 * 60 * 60 * 1000; // 1 day
+	const renewThresholdMs = 10 * 60 * 1000; // 10 minutes
 	if (msUntilExpiry < renewThresholdMs) {
 		db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?').run(expiryIso(), tokenHash);
 	}

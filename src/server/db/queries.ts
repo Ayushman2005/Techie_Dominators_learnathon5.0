@@ -148,13 +148,13 @@ export function assembleGrievanceSummaries(db: Database, rows: GrievanceRow[]): 
 	// Actually, let's just do a simple map for now to avoid the attachments/comments N+1 which is the heavy part.
 	
 	return rows.map((row) => {
-		let student = userMap.get(row.student_id);
+		const student = userMap.get(row.student_id);
 		if (!student) {
-			const fallback = findUserById(db, row.student_id);
-			student = fallback ? assembleUser(db, fallback) : assembleUser(db, userRows[0]); // Fallback
+			// Student record missing — data integrity error, don't silently substitute another user
+			throw new HttpError(500, 'internal', 'Internal server error.');
 		}
 		// Return summary with empty arrays to avoid N+1 on heavy relations
-		return toPublicGrievance(row, student!, [], [], null);
+		return toPublicGrievance(row, student, [], [], null);
 	});
 }
 
@@ -518,13 +518,10 @@ export function listGrievancesFiltered(
 		baseConditions = ['g.student_id = ?'];
 		baseParams = [scope.userId];
 	} else if (scope.role === 'warden') {
-		if (!scope.hostelId) {
-			// If warden has no hostel, they see nothing
-			baseConditions = ['1 = 0'];
-		} else {
-			baseConditions = ['u.hostel_id = ?'];
-			baseParams = [scope.hostelId];
-		}
+		// Filter strictly by warden_id assignment, not hostel — multiple wardens can share a hostel
+		// and each should only see their own assigned students' grievances.
+		baseConditions = ['u.warden_id = ?'];
+		baseParams = [scope.userId];
 	}
 	// admin: no base condition — sees all
 

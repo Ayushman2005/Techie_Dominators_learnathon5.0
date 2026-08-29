@@ -15,7 +15,8 @@ export const API_PORT = Number(process.env.HOSTEL_API_PORT ?? 3001);
 
 export const SESSION_COOKIE = 'hg_session';
 
-export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+/** Session time-to-live: 30 minutes (1,800 seconds). */
+export const SESSION_TTL_SECONDS = 30 * 60;
 
 /** Maximum file size per attachment: 5 MB (raised from 2 MB to support PDFs). */
 export const MAX_ATTACHMENT_MB = 5;

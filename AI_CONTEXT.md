@@ -11,7 +11,7 @@ This document is maintained by the AI assistant to preserve project context acro
 - **Security Audit & Hardening:**
   - Enforced `MIN_PASSWORD_LENGTH=12` in `config.ts` and `users.ts`.
   - Added global 10MB body size limit middleware in `app.ts` to prevent DoS attacks.
-  - Implemented session sliding window (24h renewal threshold on the 7-day TTL).
+  - Implemented session sliding window (10m renewal threshold on the 30-minute TTL).
   - Fixed BOLA (Broken Object Level Authorization) for wardens: `assertCanViewGrievance` now strictly checks if the student belongs to the warden, preventing wardens from reading/modifying grievances of students not assigned to them.
 - **Performance & DB Optimization:**
   - Enabled WAL mode and other performance pragmas (`synchronous=NORMAL`, 32MB cache, memory temp store).
