@@ -1,5 +1,5 @@
 import { HttpError } from './errors.ts';
-import type { GrievanceCategory, GrievanceStatusDb, GrievanceStatusUi } from '../types/index.ts';
+import type { GrievanceCategory, GrievanceStatusDb, GrievanceStatusUi, GrievancePriority } from '../types/index.ts';
 
 export const GRIEVANCE_CATEGORIES: readonly GrievanceCategory[] = [
 	'Maintenance',
@@ -47,4 +47,18 @@ export function parseCategory(value: string): GrievanceCategory {
 		return value as GrievanceCategory;
 	}
 	throw new HttpError(400, 'bad_request', 'Invalid grievance category.');
+}
+
+export const GRIEVANCE_PRIORITIES: readonly GrievancePriority[] = [
+	'low',
+	'medium',
+	'high',
+	'urgent'
+];
+
+export function parsePriority(value: string): GrievancePriority {
+	if ((GRIEVANCE_PRIORITIES as readonly string[]).includes(value)) {
+		return value as GrievancePriority;
+	}
+	throw new HttpError(400, 'bad_request', 'Invalid grievance priority.');
 }

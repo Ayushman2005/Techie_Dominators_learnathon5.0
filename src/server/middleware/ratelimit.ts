@@ -12,9 +12,11 @@
  * - Limits are intentionally conservative to allow legitimate use
  */
 
+import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Context, Next } from 'hono';
 import { HttpError } from '../http/errors.ts';
 import { securityLog } from '../logger.ts';
+import { TRUST_PROXY } from '../config.ts';
 
 interface RateLimitConfig {
 	/** Maximum requests allowed in the window */
@@ -50,16 +52,45 @@ function pruneWindow(timestamps: number[], windowStart: number): number[] {
  * For login: use remote IP (prevents credential stuffing regardless of account).
  * For authenticated endpoints: use userId (per-user fairness, not IP-based).
  */
+/**
+ * Get a rate-limit key from the context.
+ * For login: use remote IP (prevents credential stuffing regardless of account).
+ * For authenticated endpoints: use userId (per-user fairness, not IP-based).
+ *
+ * SECURITY: X-Forwarded-For is only trusted when TRUST_PROXY=true (i.e. when
+ * a trusted reverse proxy is configured that strips/rewrites this header).
+ * Trusting it unconditionally allows an attacker to spoof their IP and bypass
+ * rate limiting by cycling through fake values in the header.
+ */
 function getKey(c: Context, useUserId: boolean): string {
 	if (useUserId) {
-		// If userId available (set after auth middleware), prefer it
 		const userId = c.get('rateLimitUserId' as never) as string | undefined;
 		if (userId) return `user:${userId}`;
 	}
-	// Fall back to IP address — check standard proxy headers first
-	const forwarded = c.req.header('x-forwarded-for');
-	const ip = forwarded ? forwarded.split(',')[0].trim() : (c.req.header('x-real-ip') ?? 'unknown');
-	return `ip:${ip}`;
+	// Only trust proxy headers when TRUST_PROXY is explicitly enabled
+	if (TRUST_PROXY) {
+		const forwarded = c.req.header('x-forwarded-for');
+		if (forwarded) {
+			const ip = forwarded.split(',')[0].trim();
+			if (ip) return `ip:${ip}`;
+		}
+		const realIp = c.req.header('x-real-ip');
+		if (realIp) return `ip:${realIp.trim()}`;
+	}
+	// Without a trusted proxy, fall back to the underlying socket IP.
+	try {
+		const info = getConnInfo(c);
+		if (info && info.remote.address) {
+			return `ip:${info.remote.address}`;
+		}
+	} catch {
+		// Fallback if getConnInfo fails for any reason
+	}
+	
+	// Absolute worst-case fallback, though getConnInfo should rarely fail in Node.
+	const userAgent = c.req.header('user-agent') ?? 'ua-unknown';
+	const acceptLang = c.req.header('accept-language') ?? 'lang-unknown';
+	return `fingerprint:${userAgent.slice(0, 80)}:${acceptLang.slice(0, 20)}`;
 }
 
 /**
@@ -90,7 +121,7 @@ export function rateLimitMiddleware(config: RateLimitConfig, useUserId = false) 
 			c.header('Retry-After', String(retryAfterSec));
 			c.header('X-RateLimit-Limit', String(maxRequests));
 			c.header('X-RateLimit-Remaining', '0');
-			throw new HttpError(429, 'bad_request', message);
+			throw new HttpError(429, 'rate_limited', message);
 		}
 
 		active.push(now);
@@ -103,12 +134,12 @@ export function rateLimitMiddleware(config: RateLimitConfig, useUserId = false) 
 	};
 }
 
-/** Rate limiter for login endpoint: 10 attempts per 15 minutes per IP. */
+/** Rate limiter for login endpoint: 3 attempts per 2 minutes per IP to prevent brute-force attacks. */
 export const loginRateLimit = rateLimitMiddleware(
 	{
-		maxRequests: 10,
-		windowMs: 15 * 60 * 1000,
-		message: 'Too many login attempts. Please try again in 15 minutes.'
+		maxRequests: 3,
+		windowMs: 2 * 60 * 1000, // 2 minutes
+		message: 'Too many login attempts. Please wait 2 minutes before trying again.'
 	},
 	false // key by IP — prevents credential stuffing even across accounts
 );

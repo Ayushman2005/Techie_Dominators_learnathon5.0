@@ -16,9 +16,9 @@
 	import EmptyState from '$lib/components/app/empty-state.svelte';
 	import ErrorState from '$lib/components/app/error-state.svelte';
 	import ListSkeleton from '$lib/components/app/list-skeleton.svelte';
-	import { userService } from '$lib/services';
+	import { userService, hostelService } from '$lib/services';
 	import { getSession } from '$lib/stores/auth.svelte';
-	import type { CreateUserInput, Role, UpdateUserInput, User } from '$lib/types';
+	import type { CreateUserInput, Role, UpdateUserInput, User, Hostel } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
@@ -33,6 +33,7 @@
 
 	let users = $state<User[]>([]);
 	let wardens = $state<User[]>([]);
+	let hostels = $state<Hostel[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -56,6 +57,7 @@
 	let addRollNo = $state('');
 	let addEmpId = $state('');
 	let addWardenId = $state('');
+	let addHostelId = $state('');
 
 	// Edit Form fields
 	let editName = $state('');
@@ -66,6 +68,7 @@
 	let editRollNo = $state('');
 	let editEmpId = $state('');
 	let editWardenId = $state('');
+	let editHostelId = $state('');
 
 	const filteredUsers = $derived(
 		users.filter((u) => {
@@ -90,12 +93,19 @@
 		return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 	}
 
+	function getHostelName(hostelId?: string | null): string | null {
+		if (!hostelId) return null;
+		const h = hostels.find(h => h.id === hostelId);
+		return h ? h.name : null;
+	}
+
 	async function loadData() {
 		loading = true;
 		error = null;
-		const [usersRes, wardensRes] = await Promise.all([
+		const [usersRes, wardensRes, hostelsRes] = await Promise.all([
 			userService.list(),
-			userService.listWardens()
+			userService.listWardens(),
+			hostelService.list()
 		]);
 
 		if (usersRes.ok) {
@@ -106,6 +116,10 @@
 
 		if (wardensRes.ok) {
 			wardens = wardensRes.data;
+		}
+
+		if (hostelsRes.ok) {
+			hostels = hostelsRes.data;
 		}
 
 		loading = false;
@@ -120,6 +134,7 @@
 		addRollNo = '';
 		addEmpId = '';
 		addWardenId = wardens.length > 0 ? wardens[0].id : '';
+		addHostelId = hostels.length > 0 ? hostels[0].id : '';
 		addDialogOpen = true;
 	}
 
@@ -156,7 +171,8 @@
 			rollNo: addRole === 'student' ? addRollNo.trim() || undefined : undefined,
 			studentId: addRole === 'student' ? addRollNo.trim() || undefined : undefined,
 			empId: addRole === 'warden' || addRole === 'admin' ? addEmpId.trim() || undefined : undefined,
-			wardenId: addRole === 'student' ? addWardenId.trim() || undefined : undefined
+			wardenId: addRole === 'student' ? addWardenId.trim() || undefined : undefined,
+			hostelId: addHostelId.trim() || undefined
 		};
 
 		const result = await userService.create(payload);
@@ -181,6 +197,7 @@
 		editRollNo = u.rollNo ?? '';
 		editEmpId = u.empId ?? '';
 		editWardenId = u.wardenId ?? (wardens.length > 0 ? wardens[0].id : '');
+		editHostelId = u.hostelId ?? (hostels.length > 0 ? hostels[0].id : '');
 		editDialogOpen = true;
 	}
 
@@ -217,7 +234,8 @@
 			rollNo: editRole === 'student' ? editRollNo.trim() || undefined : undefined,
 			studentId: editRole === 'student' ? editRollNo.trim() || undefined : undefined,
 			empId: editRole === 'warden' || editRole === 'admin' ? editEmpId.trim() || undefined : undefined,
-			wardenId: editRole === 'student' ? editWardenId.trim() || undefined : undefined
+			wardenId: editRole === 'student' ? editWardenId.trim() || undefined : undefined,
+			hostelId: editHostelId.trim() || undefined
 		};
 		if (editPassword.trim()) {
 			payload.password = editPassword.trim();
@@ -344,7 +362,7 @@
 						<TableHead>User Details</TableHead>
 						<TableHead>Identifier (Roll / Emp)</TableHead>
 						<TableHead>Role</TableHead>
-						<TableHead>Hostel Room</TableHead>
+						<TableHead>Hostel & Room</TableHead>
 						<TableHead>Assigned Warden</TableHead>
 						<TableHead>Registered</TableHead>
 						<TableHead class="text-right">Actions</TableHead>
@@ -393,8 +411,13 @@
 									</span>
 								{/if}
 							</TableCell>
-							<TableCell class="text-xs text-muted-foreground font-mono">
-								{u.room ?? '—'}
+							<TableCell class="text-xs">
+								{#if u.hostelId}
+									<div class="font-medium text-foreground">{getHostelName(u.hostelId) ?? 'Unknown Hostel'}</div>
+									<div class="text-muted-foreground font-mono">{u.room ?? 'No Room'}</div>
+								{:else}
+									<span class="text-muted-foreground font-mono">—</span>
+								{/if}
 							</TableCell>
 							<TableCell class="text-xs whitespace-nowrap">
 								{#if u.role === 'student'}
@@ -463,7 +486,7 @@
 			</div>
 			<div class="space-y-1">
 				<Label for="add-password">Initial Password *</Label>
-				<Input id="add-password" type="password" bind:value={addPassword} placeholder="•••••••• (min 6 characters)" required />
+				<Input id="add-password" type="password" bind:value={addPassword} placeholder="•••••••• (min 12 characters)" required />
 			</div>
 			
 			<!-- Role Selector -->
@@ -479,6 +502,26 @@
 					<option value="admin">Administrator</option>
 				</select>
 			</div>
+
+			{#if addRole === 'student' || addRole === 'warden'}
+				<div class="space-y-1">
+					<Label for="add-hostel">Assigned Hostel</Label>
+					<select
+						id="add-hostel"
+						class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+						bind:value={addHostelId}
+					>
+						{#if hostels.length === 0}
+							<option value="" disabled>No hostels available — create a hostel first</option>
+						{:else}
+							<option value="">— Select Hostel (Optional) —</option>
+							{#each hostels as h}
+								<option value={h.id}>{h.name}</option>
+							{/each}
+						{/if}
+					</select>
+				</div>
+			{/if}
 
 			{#if addRole === 'student'}
 				<div class="grid grid-cols-2 gap-3">
@@ -567,6 +610,26 @@
 					<option value="admin">Administrator</option>
 				</select>
 			</div>
+
+			{#if editRole === 'student' || editRole === 'warden'}
+				<div class="space-y-1">
+					<Label for="edit-hostel">Assigned Hostel</Label>
+					<select
+						id="edit-hostel"
+						class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+						bind:value={editHostelId}
+					>
+						{#if hostels.length === 0}
+							<option value="" disabled>No hostels available</option>
+						{:else}
+							<option value="">— Select Hostel (Optional) —</option>
+							{#each hostels as h}
+								<option value={h.id}>{h.name}</option>
+							{/each}
+						{/if}
+					</select>
+				</div>
+			{/if}
 
 			{#if editRole === 'student'}
 				<div class="grid grid-cols-2 gap-3">

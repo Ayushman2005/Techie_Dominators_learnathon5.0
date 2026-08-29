@@ -5,6 +5,8 @@ export type GrievanceStatusDb = 'open' | 'in_progress' | 'resolved';
 /** Status strings the Svelte UI already uses. */
 export type GrievanceStatusUi = 'Open' | 'In Progress' | 'Resolved';
 
+export type GrievancePriority = 'low' | 'medium' | 'high' | 'urgent';
+
 export type GrievanceCategory =
 	| 'Maintenance'
 	| 'Water'
@@ -22,8 +24,12 @@ export interface PublicUser {
 	room?: string;
 	rollNo?: string | null;
 	empId?: string | null;
+	phone?: string | null;
+	emergencyContact?: string | null;
 	wardenId?: string | null;
+	hostelId?: string | null;
 	warden?: PublicUser | null;
+	createdAt?: string;
 }
 
 export interface PublicAttachment {
@@ -54,14 +60,28 @@ export interface PublicResolutionReview {
 	createdAt: string;
 }
 
+export interface PublicStatusHistory {
+	id: string;
+	grievanceId: string;
+	changedById: string;
+	changedByName: string;
+	changedByRole: string;
+	oldStatus: GrievanceStatusUi;
+	newStatus: GrievanceStatusUi;
+	note?: string | null;
+	createdAt: string;
+}
+
 export interface PublicGrievance {
 	id: string;
 	title: string;
 	description: string;
 	category: GrievanceCategory;
 	status: GrievanceStatusUi;
+	priority: GrievancePriority;
 	studentId: string;
 	student: PublicUser;
+	availableTime?: string | null;
 	createdAt: string;
 	updatedAt: string;
 	attachments: PublicAttachment[];
@@ -88,7 +108,10 @@ export interface UserRow {
 	room: string | null;
 	roll_no: string | null;
 	emp_id: string | null;
+	phone: string | null;
+	emergency_contact: string | null;
 	warden_id: string | null;
+	hostel_id: string | null;
 	created_at: string;
 }
 
@@ -99,8 +122,22 @@ export interface GrievanceRow {
 	category: string;
 	description: string;
 	status: GrievanceStatusDb;
+	priority: string;
+	available_time: string | null;
 	created_at: string;
 	updated_at: string;
+}
+
+export interface StatusHistoryRow {
+	id: string;
+	grievance_id: string;
+	changed_by_id: string;
+	changed_by_name: string;
+	changed_by_role: string;
+	old_status: GrievanceStatusDb;
+	new_status: GrievanceStatusDb;
+	note: string | null;
+	created_at: string;
 }
 
 export interface CommentRow {
@@ -128,6 +165,7 @@ export interface SessionUser {
 	email: string;
 	role: Role;
 	room: string | null;
+	hostel_id: string | null;
 	created_at: string;
 }
 
@@ -137,6 +175,8 @@ export type ErrorCode =
 	| 'unauthorized'
 	| 'not_found'
 	| 'conflict'
+	| 'rate_limited'
+	| 'too_large'
 	| 'internal';
 
 export type AuditLogRole = Role | 'system';
@@ -193,3 +233,21 @@ export interface AuditLogFilters {
 	limit?: number;
 }
 
+export interface GrievanceFilters {
+	status?: string;
+	category?: string;
+	priority?: string;
+	search?: string;
+	page?: number;
+	limit?: number;
+}
+
+export interface GrievanceStats {
+	total: number;
+	open: number;
+	inProgress: number;
+	resolved: number;
+	today: number;
+	byCategory: Record<string, number>;
+	byPriority: Record<string, number>;
+}

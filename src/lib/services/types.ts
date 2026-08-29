@@ -18,7 +18,10 @@ import type {
 	AuditLog,
 	AuditLogStats,
 	AuditLogFilters,
-	AuditLogListResponse
+	AuditLogListResponse,
+	Notice,
+	CreateNoticeInput,
+	Hostel
 } from '$lib/types';
 
 export interface AttachmentInput {
@@ -34,6 +37,7 @@ export interface CreateGrievanceInput {
 	title: string;
 	category: GrievanceCategory;
 	description: string;
+	availableTime?: string;
 	attachment?: AttachmentInput | null;
 }
 
@@ -70,6 +74,8 @@ export interface UserService {
 	create(input: CreateUserInput): Promise<Result<User>>;
 	update(id: string, input: UpdateUserInput): Promise<Result<User>>;
 	delete(id: string): Promise<Result<void>>;
+	updateMyProfile(input: { phone?: string | null; emergencyContact?: string | null }): Promise<Result<User>>;
+	changeMyPassword(current: string, next: string): Promise<Result<void>>;
 	getStats(): Promise<Result<UserStats>>;
 }
 
@@ -85,6 +91,7 @@ export interface GrievanceService {
 	delete(id: string): Promise<Result<void>>;
 	submitReview(id: string, input: SubmitReviewInput): Promise<Result<Grievance>>;
 	getReview(id: string): Promise<Result<ResolutionReview | null>>;
+	getStats(): Promise<Result<any>>;
 }
 
 export interface CommentService {
@@ -95,6 +102,18 @@ export interface AuditLogService {
 	list(filters?: AuditLogFilters): Promise<Result<AuditLogListResponse>>;
 	getStats(): Promise<Result<AuditLogStats>>;
 	exportLogs(format?: 'json' | 'csv', filters?: AuditLogFilters): Promise<Result<string | AuditLog[]>>;
+}
+
+export interface NoticeService {
+	list(): Promise<Result<Notice[]>>;
+	create(input: CreateNoticeInput): Promise<Result<Notice>>;
+	delete(id: string): Promise<Result<void>>;
+}
+
+export interface HostelService {
+	list(): Promise<Result<Hostel[]>>;
+	create(name: string): Promise<Result<Hostel>>;
+	delete(id: string): Promise<Result<void>>;
 }
 
 export type {
@@ -109,6 +128,8 @@ export type {
 	AuditLog,
 	AuditLogStats,
 	AuditLogFilters,
-	AuditLogListResponse
+	AuditLogListResponse,
+	Notice,
+	CreateNoticeInput
 };
 

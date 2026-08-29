@@ -43,7 +43,7 @@ export function destroySession(db: Database, token: string): void {
 export function readSessionUser(db: Database, token: string): SessionUser | undefined {
 	const row = db
 		.prepare(
-			`SELECT u.id, u.name, u.email, u.role, u.room, u.created_at, s.expires_at
+			`SELECT u.id, u.name, u.email, u.role, u.room, u.hostel_id, u.created_at, s.expires_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        WHERE s.token = ?`
@@ -56,15 +56,25 @@ export function readSessionUser(db: Database, token: string): SessionUser | unde
 		db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
 		return undefined;
 	}
+	// Sliding window renewal: if session expires within 24 hours, extend it.
+	// This ensures active users are never unexpectedly logged out while idle
+	// users still get cleaned up after the full TTL.
+	const msUntilExpiry = new Date(row.expires_at).getTime() - Date.now();
+	const renewThresholdMs = 24 * 60 * 60 * 1000; // 1 day
+	if (msUntilExpiry < renewThresholdMs) {
+		db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?').run(expiryIso(), token);
+	}
 	return {
 		id: row.id,
 		name: row.name,
 		email: row.email,
 		role: row.role,
 		room: row.room,
+		hostel_id: row.hostel_id,
 		created_at: row.created_at
 	};
 }
+
 
 /**
  * Set the session cookie with security attributes:
@@ -167,21 +177,6 @@ export function requireWarden(user: SessionUser): void {
 			userId: user.id,
 			role: user.role,
 			reason: 'warden_required'
-		});
-		throw new HttpError(403, 'unauthorized', 'Access denied.');
-	}
-}
-
-/**
- * Require that the authenticated user is the specified student (owner).
- * Throws 403 for cross-student IDOR attempts.
- */
-export function requireOwner(user: SessionUser, ownerId: string, resourceType: string): void {
-	if (user.role !== 'student' || user.id !== ownerId) {
-		securityLog('authorization_failure', {
-			userId: user.id,
-			role: user.role,
-			reason: `${resourceType}_not_owner`
 		});
 		throw new HttpError(403, 'unauthorized', 'Access denied.');
 	}

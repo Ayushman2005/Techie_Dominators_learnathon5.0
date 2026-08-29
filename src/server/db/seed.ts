@@ -16,15 +16,56 @@ const JPEG = Buffer.from(
 	'base64'
 );
 
+/**
+ * Clean seed for production or initial setup.
+ * Only creates the essential Super Admin account.
+ */
 export function seedDatabase(db: Database, uploadsDir: string): void {
+	ensureUploadsDir(uploadsDir);
+	const adminHash = hashPassword('admin123');
+
+	const insertUser = db.prepare(
+		`INSERT INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, warden_id, hostel_id, created_at)
+     VALUES (@id, @name, @email, @password_hash, @role, @room, @roll_no, @emp_id, @warden_id, @hostel_id, @created_at)`
+	);
+
+	db.transaction(() => {
+		insertUser.run({
+			id: 'adm-1',
+			name: 'Dr. S. K. Panda (Admin)',
+			email: 'admin@example.test',
+			password_hash: adminHash,
+			role: 'admin',
+			room: null,
+			roll_no: null,
+			emp_id: 'ADM-0001',
+			warden_id: null,
+			hostel_id: null,
+			created_at: new Date().toISOString()
+		});
+	})();
+}
+
+export function seedMockData(db: Database, uploadsDir: string): void {
 	ensureUploadsDir(uploadsDir);
 	const studentHash = hashPassword('student123');
 	const wardenHash = hashPassword('warden123');
 	const adminHash = hashPassword('admin123');
 
+	const insertHostel = db.prepare(
+		`INSERT INTO hostels (id, name, created_at) VALUES (@id, @name, @created_at)`
+	);
+
+	const hostels = [
+		{ id: 'hst-1', name: 'Boys Hostel A', created_at: '2026-08-01T08:00:00.000Z' },
+		{ id: 'hst-2', name: 'Girls Hostel B', created_at: '2026-08-01T08:00:00.000Z' }
+	];
+
+	for (const h of hostels) insertHostel.run(h);
+
 	const insertUser = db.prepare(
-		`INSERT INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, warden_id, created_at)
-     VALUES (@id, @name, @email, @password_hash, @role, @room, @roll_no, @emp_id, @warden_id, @created_at)`
+		`INSERT INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, warden_id, hostel_id, created_at)
+     VALUES (@id, @name, @email, @password_hash, @role, @room, @roll_no, @emp_id, @warden_id, @hostel_id, @created_at)`
 	);
 
 	const users = [
@@ -38,6 +79,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 			roll_no: null,
 			emp_id: 'ADM-0001',
 			warden_id: null,
+			hostel_id: null,
 			created_at: '2026-08-01T08:00:00.000Z'
 		},
 		{
@@ -50,6 +92,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 			roll_no: null,
 			emp_id: 'EMP-1001',
 			warden_id: null,
+			hostel_id: 'hst-1',
 			created_at: '2026-08-01T08:00:00.000Z'
 		},
 		{
@@ -62,6 +105,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 			roll_no: null,
 			emp_id: 'EMP-1002',
 			warden_id: null,
+			hostel_id: 'hst-2',
 			created_at: '2026-08-01T08:00:00.000Z'
 		},
 		{
@@ -74,6 +118,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 			roll_no: '21BCE1042',
 			emp_id: null,
 			warden_id: 'war-1',
+			hostel_id: 'hst-1',
 			created_at: '2026-08-01T08:00:00.000Z'
 		},
 		{
@@ -86,6 +131,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 			roll_no: '21BCE1088',
 			emp_id: null,
 			warden_id: 'war-1',
+			hostel_id: 'hst-1',
 			created_at: '2026-08-01T08:00:00.000Z'
 		},
 		{
@@ -98,6 +144,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 			roll_no: '22BCS2015',
 			emp_id: null,
 			warden_id: 'war-2',
+			hostel_id: 'hst-2',
 			created_at: '2026-08-01T08:00:00.000Z'
 		}
 	];
@@ -490,7 +537,7 @@ export function seedDatabase(db: Database, uploadsDir: string): void {
 				stored_filename: stored,
 				mime_type: file.mime_type,
 				size_bytes: file.bytes.byteLength,
-				data: file.bytes,
+				data: null,
 				created_at: file.created_at
 			});
 		}

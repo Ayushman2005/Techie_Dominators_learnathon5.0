@@ -195,6 +195,17 @@ class MockUserService implements UserService {
 		};
 		return delay({ ok: true as const, data: stats });
 	}
+
+	async updateMyProfile(input: { phone?: string | null; emergencyContact?: string | null }): Promise<Result<User>> {
+		const user = MOCK_USERS['usr-student-1']; // mock implementation
+		if (input.phone !== undefined) user.phone = input.phone;
+		if (input.emergencyContact !== undefined) user.emergencyContact = input.emergencyContact;
+		return delay({ ok: true as const, data: enrichUser(user) });
+	}
+
+	async changeMyPassword(current: string, next: string): Promise<Result<void>> {
+		return delay({ ok: true as const, data: undefined });
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +325,10 @@ class MockGrievanceService implements GrievanceService {
 			return delay({ ok: false as const, error: `Grievance ${id} was not found.` });
 		}
 		return delay({ ok: true as const, data: g.review ? { ...g.review } : null });
+	}
+
+	async getStats(): Promise<Result<any>> {
+		return delay({ ok: true as const, data: { total: grievances.length, open: 0, inProgress: 0, resolved: 0 } });
 	}
 }
 

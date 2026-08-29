@@ -10,13 +10,17 @@ import type {
 	SubmitReviewInput,
 	UserService,
 	UserStats,
-	AuditLogService
+	AuditLogService,
+	HostelService,
+	NoticeService,
+	CreateNoticeInput
 } from '$lib/services/types';
 import type {
 	AuthResult,
 	Comment,
 	CreateUserInput,
 	Grievance,
+	GrievanceAnalytics,
 	GrievanceStatus,
 	ResolutionReview,
 	Result,
@@ -26,10 +30,34 @@ import type {
 	AuditLog,
 	AuditLogStats,
 	AuditLogFilters,
-	AuditLogListResponse
+	AuditLogListResponse,
+	Hostel,
+	Notice
 } from '$lib/types';
 
 const SESSION_KEY = 'hg.session.user';
+
+
+function getCsrfToken(): string {
+	if (typeof document === 'undefined') return '';
+	const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+	return match ? decodeURIComponent(match[1]) : '';
+}
+
+async function apiFetch(input: RequestInfo | URL | string, init?: RequestInit): Promise<Response> {
+	const options = init || {};
+	const method = (options.method || 'GET').toUpperCase();
+	if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+		const token = getCsrfToken();
+		if (token) {
+			const newHeaders = new Headers(options.headers as any);
+			newHeaders.set('X-CSRF-Token', token);
+			options.headers = newHeaders;
+		}
+	}
+	return fetch(input, options);
+}
+
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
 	return (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -43,7 +71,7 @@ class ApiAuthService implements AuthService {
 	private currentUser: User | null = null;
 
 	async signIn(email: string, password: string): Promise<AuthResult> {
-		const res = await fetch('/api/login', {
+		const res = await apiFetch('/api/login', {
 			method: 'POST',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
@@ -70,7 +98,7 @@ class ApiAuthService implements AuthService {
 		} catch {
 			/* ignore */
 		}
-		await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+		await apiFetch('/api/logout', { method: 'POST', credentials: 'include' });
 	}
 
 	restore(): User | null {
@@ -89,7 +117,7 @@ class ApiAuthService implements AuthService {
 class ApiUserService implements UserService {
 	async list(role?: Role): Promise<Result<User[]>> {
 		const url = role ? `/api/users?role=${encodeURIComponent(role)}` : '/api/users';
-		const res = await fetch(url, { credentials: 'include' });
+		const res = await apiFetch(url, { credentials: 'include' });
 		const json = await readJson(res);
 		if (!res.ok) {
 			return { ok: false, error: errorMessage(json, 'Could not load users.') };
@@ -98,7 +126,7 @@ class ApiUserService implements UserService {
 	}
 
 	async listWardens(): Promise<Result<User[]>> {
-		const res = await fetch('/api/users/wardens', { credentials: 'include' });
+		const res = await apiFetch('/api/users/wardens', { credentials: 'include' });
 		const json = await readJson(res);
 		if (!res.ok) {
 			return { ok: false, error: errorMessage(json, 'Could not load wardens.') };
@@ -107,14 +135,14 @@ class ApiUserService implements UserService {
 	}
 
 	async getById(id: string): Promise<User | null> {
-		const res = await fetch(`/api/users/${encodeURIComponent(id)}`, { credentials: 'include' });
+		const res = await apiFetch(`/api/users/${encodeURIComponent(id)}`, { credentials: 'include' });
 		if (!res.ok) return null;
 		const json = await readJson(res);
 		return (json.data as User) ?? null;
 	}
 
 	async create(input: CreateUserInput): Promise<Result<User>> {
-		const res = await fetch('/api/users', {
+		const res = await apiFetch('/api/users', {
 			method: 'POST',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
@@ -128,7 +156,7 @@ class ApiUserService implements UserService {
 	}
 
 	async update(id: string, input: UpdateUserInput): Promise<Result<User>> {
-		const res = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+		const res = await apiFetch(`/api/users/${encodeURIComponent(id)}`, {
 			method: 'PATCH',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
@@ -142,7 +170,7 @@ class ApiUserService implements UserService {
 	}
 
 	async delete(id: string): Promise<Result<void>> {
-		const res = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+		const res = await apiFetch(`/api/users/${encodeURIComponent(id)}`, {
 			method: 'DELETE',
 			credentials: 'include'
 		});
@@ -154,12 +182,40 @@ class ApiUserService implements UserService {
 	}
 
 	async getStats(): Promise<Result<UserStats>> {
-		const res = await fetch('/api/users/stats', { credentials: 'include' });
+		const res = await apiFetch('/api/users/stats', { credentials: 'include' });
 		const json = await readJson(res);
 		if (!res.ok) {
 			return { ok: false, error: errorMessage(json, 'Could not load user stats.') };
 		}
 		return { ok: true, data: json.data as UserStats };
+	}
+
+	async updateMyProfile(input: { phone?: string | null; emergencyContact?: string | null }): Promise<Result<User>> {
+		const res = await apiFetch('/api/users/me', {
+			method: 'PUT',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(input)
+		});
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not update profile.') };
+		}
+		return { ok: true, data: json.data as User };
+	}
+
+	async changeMyPassword(current: string, next: string): Promise<Result<void>> {
+		const res = await apiFetch('/api/users/me/password', {
+			method: 'PUT',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ current, next })
+		});
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not change password.') };
+		}
+		return { ok: true, data: undefined };
 	}
 }
 
@@ -181,7 +237,7 @@ class ApiGrievanceService implements GrievanceService {
 	}
 
 	private async list(): Promise<Result<Grievance[]>> {
-		const res = await fetch('/api/grievances', { credentials: 'include' });
+		const res = await apiFetch('/api/grievances', { credentials: 'include' });
 		const json = await readJson(res);
 		if (!res.ok) {
 			return { ok: false, error: errorMessage(json, 'Could not load grievances.') };
@@ -190,7 +246,7 @@ class ApiGrievanceService implements GrievanceService {
 	}
 
 	async getById(id: string): Promise<Result<Grievance>> {
-		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}`, { credentials: 'include' });
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(id)}`, { credentials: 'include' });
 		return grievanceResult(res);
 	}
 
@@ -203,9 +259,9 @@ class ApiGrievanceService implements GrievanceService {
 			form.set('category', input.category);
 			form.set('description', input.description);
 			form.set('file', file);
-			res = await fetch('/api/grievances', { method: 'POST', credentials: 'include', body: form });
+			res = await apiFetch('/api/grievances', { method: 'POST', credentials: 'include', body: form });
 		} else {
-			res = await fetch('/api/grievances', {
+			res = await apiFetch('/api/grievances', {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -220,7 +276,7 @@ class ApiGrievanceService implements GrievanceService {
 	}
 
 	async updateStatus(id: string, status: GrievanceStatus): Promise<Result<Grievance>> {
-		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}`, {
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(id)}`, {
 			method: 'PATCH',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
@@ -230,7 +286,7 @@ class ApiGrievanceService implements GrievanceService {
 	}
 
 	async delete(id: string): Promise<Result<void>> {
-		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}`, {
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(id)}`, {
 			method: 'DELETE',
 			credentials: 'include'
 		});
@@ -247,7 +303,7 @@ class ApiGrievanceService implements GrievanceService {
 		form.set('feedback', input.feedback);
 		form.set('file', input.file);
 
-		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}/review`, {
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(id)}/review`, {
 			method: 'POST',
 			credentials: 'include',
 			body: form
@@ -256,7 +312,7 @@ class ApiGrievanceService implements GrievanceService {
 	}
 
 	async getReview(id: string): Promise<Result<ResolutionReview | null>> {
-		const res = await fetch(`/api/grievances/${encodeURIComponent(id)}/review`, {
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(id)}/review`, {
 			credentials: 'include'
 		});
 		const json = await readJson(res);
@@ -265,11 +321,20 @@ class ApiGrievanceService implements GrievanceService {
 		}
 		return { ok: true, data: (json.data as ResolutionReview) ?? null };
 	}
+
+	async getStats(): Promise<Result<any>> {
+		const res = await apiFetch('/api/grievances/stats', { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) {
+			return { ok: false, error: errorMessage(json, 'Could not load grievance stats.') };
+		}
+		return { ok: true, data: json.data };
+	}
 }
 
 class ApiCommentService implements CommentService {
 	async add(grievanceId: string, _authorId: string, body: string): Promise<Result<Comment>> {
-		const res = await fetch(`/api/grievances/${encodeURIComponent(grievanceId)}/comments`, {
+		const res = await apiFetch(`/api/grievances/${encodeURIComponent(grievanceId)}/comments`, {
 			method: 'POST',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
@@ -295,7 +360,7 @@ class ApiAuditLogService implements AuditLogService {
 
 		const qs = params.toString();
 		const url = qs ? `/api/audit-logs?${qs}` : '/api/audit-logs';
-		const res = await fetch(url, { credentials: 'include' });
+		const res = await apiFetch(url, { credentials: 'include' });
 		const json = await readJson(res);
 		if (!res.ok) {
 			return { ok: false, error: errorMessage(json, 'Could not load audit logs.') };
@@ -313,7 +378,7 @@ class ApiAuditLogService implements AuditLogService {
 	}
 
 	async getStats(): Promise<Result<AuditLogStats>> {
-		const res = await fetch('/api/audit-logs/stats', { credentials: 'include' });
+		const res = await apiFetch('/api/audit-logs/stats', { credentials: 'include' });
 		const json = await readJson(res);
 		if (!res.ok) {
 			return { ok: false, error: errorMessage(json, 'Could not load audit stats.') };
@@ -330,7 +395,7 @@ class ApiAuditLogService implements AuditLogService {
 		if (filters.search) params.set('search', filters.search);
 
 		const url = `/api/audit-logs/export?${params.toString()}`;
-		const res = await fetch(url, { credentials: 'include' });
+		const res = await apiFetch(url, { credentials: 'include' });
 		if (!res.ok) {
 			const json = await readJson(res);
 			return { ok: false, error: errorMessage(json, 'Could not export audit logs.') };
@@ -352,3 +417,78 @@ export const grievanceService: GrievanceService = new ApiGrievanceService();
 export const commentService: CommentService = new ApiCommentService();
 export const auditLogService: AuditLogService = new ApiAuditLogService();
 
+export const analyticsService = {
+	async getGrievanceAnalytics(days: number = 30): Promise<Result<GrievanceAnalytics>> {
+		const params = days > 0 ? `?days=${days}` : '?days=0';
+		const res = await apiFetch(`/api/grievances/analytics${params}`, { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) return { ok: false, error: errorMessage(json, 'Could not load analytics.') };
+		return { ok: true, data: json.data as GrievanceAnalytics };
+	}
+};
+
+export const noticeService: NoticeService = {
+	async list(): Promise<Result<Notice[]>> {
+		const res = await apiFetch('/api/notices', { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) return { ok: false, error: errorMessage(json, 'Could not fetch notices.') };
+		return { ok: true, data: (json.data as Notice[]) ?? [] };
+	},
+
+	async create(input: CreateNoticeInput): Promise<Result<Notice>> {
+		const res = await apiFetch('/api/notices', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(input),
+			credentials: 'include'
+		});
+		const json = await readJson(res);
+		if (!res.ok) return { ok: false, error: errorMessage(json, 'Could not create notice.') };
+		return { ok: true, data: json.data as Notice };
+	},
+
+	async delete(id: string): Promise<Result<void>> {
+		const res = await apiFetch(`/api/notices/${id}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		});
+		if (!res.ok) {
+			const json = await readJson(res);
+			return { ok: false, error: errorMessage(json, 'Could not delete notice.') };
+		}
+		return { ok: true, data: undefined };
+	}
+};
+
+export const hostelService: HostelService = {
+	async list(): Promise<Result<Hostel[]>> {
+		const res = await apiFetch('/api/hostels', { credentials: 'include' });
+		const json = await readJson(res);
+		if (!res.ok) return { ok: false, error: errorMessage(json, 'Could not fetch hostels.') };
+		return { ok: true, data: (json.data as Hostel[]) ?? [] };
+	},
+
+	async create(name: string): Promise<Result<Hostel>> {
+		const res = await apiFetch('/api/hostels', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name }),
+			credentials: 'include'
+		});
+		const json = await readJson(res);
+		if (!res.ok) return { ok: false, error: errorMessage(json, 'Could not create hostel.') };
+		return { ok: true, data: json.data as Hostel };
+	},
+
+	async delete(id: string): Promise<Result<void>> {
+		const res = await apiFetch(`/api/hostels/${id}`, {
+			method: 'DELETE',
+			credentials: 'include'
+		});
+		if (!res.ok) {
+			const json = await readJson(res);
+			return { ok: false, error: errorMessage(json, 'Could not delete hostel.') };
+		}
+		return { ok: true, data: undefined };
+	}
+};

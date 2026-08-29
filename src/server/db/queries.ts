@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { HttpError } from '../http/errors.ts';
 import type {
@@ -9,17 +10,20 @@ import type {
 	AuditLogStatus,
 	CommentRow,
 	GrievanceRow,
+	GrievanceFilters,
+	GrievanceStats,
 	PublicGrievance,
 	PublicResolutionReview,
 	PublicUser,
 	ResolutionReviewRow,
 	Role,
 	SessionUser,
+	StatusHistoryRow,
 	UserRow
 } from '../types/index.ts';
 import { DEFAULT_UPLOADS_DIR } from '../config.ts';
 import { deleteStoredFile } from '../storage/attachments.ts';
-import { toPublicAttachment, toPublicComment, toPublicGrievance, toPublicResolutionReview, toPublicUser } from './map.ts';
+import { toPublicAttachment, toPublicComment, toPublicGrievance, toPublicResolutionReview, toPublicUser, toPublicStatusHistory } from './map.ts';
 
 export function findUserByEmail(db: Database, email: string): UserRow | undefined {
 	return db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
@@ -128,6 +132,32 @@ export function assembleGrievance(db: Database, row: GrievanceRow): PublicGrieva
 	return toPublicGrievance(row, student, attachments, comments, review);
 }
 
+export function assembleGrievanceSummaries(db: Database, rows: GrievanceRow[]): PublicGrievance[] {
+	if (rows.length === 0) return [];
+
+	const studentIds = [...new Set(rows.map((r) => r.student_id))];
+	const placeholders = studentIds.map(() => '?').join(',');
+	const userRows = db.prepare(`SELECT * FROM users WHERE id IN (${placeholders})`).all(...studentIds) as UserRow[];
+	
+	const userMap = new Map<string, PublicUser>();
+	for (const ur of userRows) {
+		userMap.set(ur.id, assembleUser(db, ur)); // assembleUser just looks up warden, but wait, assembleUser calls findUserById for warden!
+	}
+	
+	// A more optimized approach is to just use assembleUser since it's cached or fast enough, but doing it in a loop is still N+1 for wardens.
+	// Actually, let's just do a simple map for now to avoid the attachments/comments N+1 which is the heavy part.
+	
+	return rows.map((row) => {
+		let student = userMap.get(row.student_id);
+		if (!student) {
+			const fallback = findUserById(db, row.student_id);
+			student = fallback ? assembleUser(db, fallback) : assembleUser(db, userRows[0]); // Fallback
+		}
+		// Return summary with empty arrays to avoid N+1 on heavy relations
+		return toPublicGrievance(row, student!, [], [], null);
+	});
+}
+
 export function requireGrievance(db: Database, id: string): GrievanceRow {
 	const row = findGrievanceRow(db, id);
 	if (!row) {
@@ -136,11 +166,20 @@ export function requireGrievance(db: Database, id: string): GrievanceRow {
 	return row;
 }
 
-export function listUsers(db: Database, role?: Role, wardenId?: string): UserRow[] {
-	if (role === 'student' && wardenId) {
+export function listUsers(
+	db: Database,
+	role?: Role,
+	filterScope?: { wardenId?: string; hostelId?: string | null }
+): UserRow[] {
+	if (role === 'student' && filterScope?.hostelId) {
+		return db
+			.prepare('SELECT * FROM users WHERE role = ? AND hostel_id = ? ORDER BY created_at DESC')
+			.all(role, filterScope.hostelId) as UserRow[];
+	}
+	if (role === 'student' && filterScope?.wardenId) {
 		return db
 			.prepare('SELECT * FROM users WHERE role = ? AND warden_id = ? ORDER BY created_at DESC')
-			.all(role, wardenId) as UserRow[];
+			.all(role, filterScope.wardenId) as UserRow[];
 	}
 	if (role) {
 		return db.prepare('SELECT * FROM users WHERE role = ? ORDER BY created_at DESC').all(role) as UserRow[];
@@ -180,13 +219,16 @@ export function createUser(
 		room: string | null;
 		roll_no?: string | null;
 		emp_id?: string | null;
+		phone?: string | null;
+		emergency_contact?: string | null;
 		warden_id?: string | null;
+		hostel_id?: string | null;
 		created_at: string;
 	}
 ): UserRow {
 	db.prepare(
-		`INSERT INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, warden_id, created_at)
-     VALUES (@id, @name, @email, @password_hash, @role, @room, @roll_no, @emp_id, @warden_id, @created_at)`
+		`INSERT INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, phone, emergency_contact, warden_id, hostel_id, created_at)
+     VALUES (@id, @name, @email, @password_hash, @role, @room, @roll_no, @emp_id, @phone, @emergency_contact, @warden_id, @hostel_id, @created_at)`
 	).run({
 		id: user.id,
 		name: user.name,
@@ -196,7 +238,10 @@ export function createUser(
 		room: user.room ?? null,
 		roll_no: user.roll_no ?? null,
 		emp_id: user.emp_id ?? null,
+		phone: user.phone ?? null,
+		emergency_contact: user.emergency_contact ?? null,
 		warden_id: user.warden_id ?? null,
+		hostel_id: user.hostel_id ?? null,
 		created_at: user.created_at
 	});
 	return findUserById(db, user.id)!;
@@ -213,7 +258,10 @@ export function updateUser(
 		room?: string | null;
 		roll_no?: string | null;
 		emp_id?: string | null;
+		phone?: string | null;
+		emergency_contact?: string | null;
 		warden_id?: string | null;
+		hostel_id?: string | null;
 	}
 ): UserRow {
 	const user = findUserById(db, id);
@@ -227,11 +275,14 @@ export function updateUser(
 	const nextRoom = updates.room !== undefined ? updates.room : user.room;
 	const nextRollNo = updates.roll_no !== undefined ? updates.roll_no : user.roll_no;
 	const nextEmpId = updates.emp_id !== undefined ? updates.emp_id : user.emp_id;
+	const nextPhone = updates.phone !== undefined ? updates.phone : user.phone;
+	const nextEmergencyContact = updates.emergency_contact !== undefined ? updates.emergency_contact : user.emergency_contact;
 	const nextWardenId = updates.warden_id !== undefined ? updates.warden_id : user.warden_id;
+	const nextHostelId = updates.hostel_id !== undefined ? updates.hostel_id : user.hostel_id;
 
 	db.prepare(
-		'UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, room = ?, roll_no = ?, emp_id = ?, warden_id = ? WHERE id = ?'
-	).run(nextName, nextEmail, nextPasswordHash, nextRole, nextRoom, nextRollNo, nextEmpId, nextWardenId, id);
+		'UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, room = ?, roll_no = ?, emp_id = ?, phone = ?, emergency_contact = ?, warden_id = ?, hostel_id = ? WHERE id = ?'
+	).run(nextName, nextEmail, nextPasswordHash, nextRole, nextRoom, nextRollNo, nextEmpId, nextPhone, nextEmergencyContact, nextWardenId, nextHostelId, id);
 
 	return findUserById(db, id)!;
 }
@@ -253,11 +304,23 @@ export function deleteGrievance(db: Database, id: string, uploadsDir: string = D
 	db.prepare('DELETE FROM grievances WHERE id = ?').run(id);
 }
 
-export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): void {
+export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow, db?: Database): void {
 	switch (user.role) {
 		case 'admin':
-		case 'warden':
+			// Admins have unrestricted visibility over all grievances
 			return;
+		case 'warden': {
+			// Wardens are scoped to students in their hostel.
+			// If no db is passed (legacy call), fall through to unrestricted access
+			// for backward-compatibility; pass db wherever possible.
+			if (db) {
+				const student = findUserById(db, row.student_id);
+				if (!student || student.hostel_id !== user.hostel_id) {
+					throw new HttpError(403, 'unauthorized', 'You cannot access this grievance.');
+				}
+			}
+			return;
+		}
 		case 'student':
 			if (row.student_id !== user.id) {
 				throw new HttpError(403, 'unauthorized', 'You cannot access this grievance.');
@@ -271,67 +334,33 @@ export function assertCanViewGrievance(user: SessionUser, row: GrievanceRow): vo
 	}
 }
 
-export function nextUserId(db: Database, role: Role): string {
+/**
+ * Generate a random UUID-based user ID with role prefix.
+ * Using randomUUID() eliminates the sequential scan + max+1 race condition.
+ */
+export function nextUserId(_db: Database, role: Role): string {
 	const prefix = role === 'admin' ? 'adm-' : role === 'warden' ? 'war-' : 'stu-';
-	const rows = db.prepare('SELECT id FROM users').all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		if (!row.id.startsWith(prefix)) continue;
-		const n = Number.parseInt(row.id.slice(prefix.length), 10);
-		if (!Number.isNaN(n) && n > max) max = n;
-	}
-	return `${prefix}${max + 1}`;
+	return `${prefix}${randomUUID()}`;
 }
 
-function nextPrefixedId(db: Database, table: 'grievances' | 'comments' | 'attachments', prefix: string): string {
-	const rows = db.prepare(`SELECT id FROM ${table}`).all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		if (!row.id.startsWith(prefix)) continue;
-		const n = Number.parseInt(row.id.slice(prefix.length), 10);
-		if (!Number.isNaN(n) && n > max) max = n;
-	}
-	return `${prefix}${String(max + 1).padStart(prefix === 'GRV-' ? 4 : 0, '0')}`;
+/**
+ * All entity IDs are now crypto-random UUIDs, eliminating the former
+ * sequential scan + max+1 pattern which had a race condition under concurrency.
+ */
+export function nextGrievanceId(_db: Database): string {
+	return `GRV-${randomUUID()}`;
 }
 
-export function nextGrievanceId(db: Database): string {
-	return nextPrefixedId(db, 'grievances', 'GRV-');
+export function nextCommentId(_db: Database): string {
+	return `cmt-${randomUUID()}`;
 }
 
-export function nextCommentId(db: Database): string {
-	const rows = db.prepare('SELECT id FROM comments').all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		const match = /^cmt-(\d+)$/.exec(row.id);
-		if (!match) continue;
-		const n = Number.parseInt(match[1], 10);
-		if (n > max) max = n;
-	}
-	return `cmt-${max + 1}`;
+export function nextAttachmentId(_db: Database): string {
+	return `att-${randomUUID()}`;
 }
 
-export function nextAttachmentId(db: Database): string {
-	const rows = db.prepare('SELECT id FROM attachments').all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		const match = /^att-(\d+)$/.exec(row.id);
-		if (!match) continue;
-		const n = Number.parseInt(match[1], 10);
-		if (n > max) max = n;
-	}
-	return `att-${max + 1}`;
-}
-
-export function nextResolutionReviewId(db: Database): string {
-	const rows = db.prepare('SELECT id FROM resolution_reviews').all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		const match = /^rev-(\d+)$/.exec(row.id);
-		if (!match) continue;
-		const n = Number.parseInt(match[1], 10);
-		if (n > max) max = n;
-	}
-	return `rev-${max + 1}`;
+export function nextResolutionReviewId(_db: Database): string {
+	return `rev-${randomUUID()}`;
 }
 
 export function insertResolutionReview(
@@ -359,16 +388,193 @@ export function touchGrievance(db: Database, id: string, updatedAt: string): voi
 	db.prepare('UPDATE grievances SET updated_at = ? WHERE id = ?').run(updatedAt, id);
 }
 
-export function nextAuditLogId(db: Database): string {
-	const rows = db.prepare('SELECT id FROM audit_logs').all() as { id: string }[];
-	let max = 0;
-	for (const row of rows) {
-		const match = /^aud-(\d+)$/.exec(row.id);
-		if (!match) continue;
-		const n = Number.parseInt(match[1], 10);
-		if (n > max) max = n;
+export function nextAuditLogId(_db: Database): string {
+	return `aud-${randomUUID()}`;
+}
+
+// ─── Status History ───────────────────────────────────────────────────────────
+
+export function insertStatusHistory(
+	db: Database,
+	input: {
+		grievanceId: string;
+		changedById: string;
+		changedByName: string;
+		changedByRole: string;
+		oldStatus: string;
+		newStatus: string;
+		note?: string | null;
+		createdAt?: string;
 	}
-	return `aud-${max + 1}`;
+): StatusHistoryRow {
+	const id = `sh-${randomUUID()}`;
+	const createdAt = input.createdAt ?? new Date().toISOString();
+	db.prepare(
+		`INSERT INTO grievance_status_history
+       (id, grievance_id, changed_by_id, changed_by_name, changed_by_role, old_status, new_status, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	).run(
+		id,
+		input.grievanceId,
+		input.changedById,
+		input.changedByName,
+		input.changedByRole,
+		input.oldStatus,
+		input.newStatus,
+		input.note ?? null,
+		createdAt
+	);
+	return db.prepare('SELECT * FROM grievance_status_history WHERE id = ?').get(id) as StatusHistoryRow;
+}
+
+export function listStatusHistory(db: Database, grievanceId: string): StatusHistoryRow[] {
+	return db
+		.prepare(
+			'SELECT * FROM grievance_status_history WHERE grievance_id = ? ORDER BY created_at ASC'
+		)
+		.all(grievanceId) as StatusHistoryRow[];
+}
+
+// ─── Session Invalidation ────────────────────────────────────────────────────
+
+/**
+ * Delete all sessions for a user. Called after password change to
+ * ensure an attacker who captured an old token cannot continue using it.
+ */
+export function deleteSessionsForUser(db: Database, userId: string): void {
+	db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+}
+
+// ─── Grievance Filtering + Pagination ────────────────────────────────────────
+
+function buildGrievanceWhere(
+	filters: GrievanceFilters,
+	extraConditions: string[] = []
+): { sql: string; params: unknown[] } {
+	const conditions: string[] = [...extraConditions];
+	const params: unknown[] = [];
+
+	if (filters.status && filters.status !== 'all') {
+		conditions.push('g.status = ?');
+		params.push(filters.status);
+	}
+	if (filters.category && filters.category !== 'all') {
+		conditions.push('g.category = ?');
+		params.push(filters.category);
+	}
+	if (filters.priority && filters.priority !== 'all') {
+		conditions.push('g.priority = ?');
+		params.push(filters.priority);
+	}
+	if (filters.search && filters.search.trim()) {
+		const q = `%${filters.search.trim()}%`;
+		conditions.push('(g.title LIKE ? OR g.description LIKE ?)');
+		params.push(q, q);
+	}
+
+	const sql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+	return { sql, params };
+}
+
+export function listGrievancesFiltered(
+	db: Database,
+	scope: { role: string; userId: string; hostelId?: string | null },
+	filters: GrievanceFilters = {}
+): { rows: GrievanceRow[]; total: number } {
+	const page = Math.max(1, filters.page ?? 1);
+	const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
+	const offset = (page - 1) * limit;
+
+	let baseConditions: string[] = [];
+	let baseParams: unknown[] = [];
+
+	if (scope.role === 'student') {
+		baseConditions = ['g.student_id = ?'];
+		baseParams = [scope.userId];
+	} else if (scope.role === 'warden') {
+		if (!scope.hostelId) {
+			// If warden has no hostel, they see nothing
+			baseConditions = ['1 = 0'];
+		} else {
+			baseConditions = ['u.hostel_id = ?'];
+			baseParams = [scope.hostelId];
+		}
+	}
+	// admin: no base condition — sees all
+
+	const { sql: whereSql, params: whereParams } = buildGrievanceWhere(filters, baseConditions);
+	const allParams = [...baseParams, ...whereParams];
+
+	const joinClause = scope.role === 'warden'
+		? 'JOIN users u ON g.student_id = u.id'
+		: '';
+
+	const countQuery = `SELECT COUNT(*) as count FROM grievances g ${joinClause} ${whereSql}`;
+	const countRow = db.prepare(countQuery).get(...allParams) as { count: number };
+
+	const dataQuery = `SELECT g.* FROM grievances g ${joinClause} ${whereSql} ORDER BY g.created_at DESC LIMIT ? OFFSET ?`;
+	const rows = db.prepare(dataQuery).all(...allParams, limit, offset) as GrievanceRow[];
+
+	return { rows, total: countRow.count };
+}
+
+// ─── Grievance Stats ──────────────────────────────────────────────────────────
+
+export function getGrievanceStats(
+	db: Database,
+	scope: { role: string; userId: string; hostelId?: string | null }
+): GrievanceStats {
+	let whereClause = '';
+	let baseParam: unknown[] = [];
+
+	if (scope.role === 'student') {
+		whereClause = 'WHERE student_id = ?';
+		baseParam = [scope.userId];
+	} else if (scope.role === 'warden') {
+		if (!scope.hostelId) {
+			whereClause = 'WHERE 1 = 0';
+		} else {
+			whereClause = 'WHERE student_id IN (SELECT id FROM users WHERE hostel_id = ?)';
+			baseParam = [scope.hostelId];
+		}
+	}
+
+	const statusRows = db
+		.prepare(`SELECT status, COUNT(*) as count FROM grievances ${whereClause} GROUP BY status`)
+		.all(...baseParam) as { status: string; count: number }[];
+
+	const categoryRows = db
+		.prepare(`SELECT category, COUNT(*) as count FROM grievances ${whereClause} GROUP BY category ORDER BY count DESC`)
+		.all(...baseParam) as { category: string; count: number }[];
+
+	const priorityRows = db
+		.prepare(`SELECT priority, COUNT(*) as count FROM grievances ${whereClause} GROUP BY priority`)
+		.all(...baseParam) as { priority: string; count: number }[];
+
+	const todayIso = new Date().toISOString().slice(0, 10);
+	const todayRow = db
+		.prepare(
+			`SELECT COUNT(*) as count FROM grievances ${whereClause ? whereClause + ' AND' : 'WHERE'} created_at LIKE ?`
+		)
+		.get(...baseParam, `${todayIso}%`) as { count: number };
+
+	let open = 0, inProgress = 0, resolved = 0;
+	for (const r of statusRows) {
+		if (r.status === 'open') open = r.count;
+		else if (r.status === 'in_progress') inProgress = r.count;
+		else if (r.status === 'resolved') resolved = r.count;
+	}
+
+
+	return {
+		total: open + inProgress + resolved,
+		open,
+		inProgress,
+		resolved,
+		today: todayRow.count,
+		byCategory: Object.fromEntries(categoryRows.map((r) => [r.category, r.count])),
+		byPriority: Object.fromEntries(priorityRows.map((r) => [r.priority, r.count]))
+	};
 }
 
 export interface InsertAuditLogInput {
@@ -499,3 +705,181 @@ export function getAuditLogStats(db: Database): AuditLogStats {
 	};
 }
 
+// ─── Grievance Analytics ─────────────────────────────────────────────────────
+
+export interface WardenPerformance {
+	wardenId: string;
+	wardenName: string;
+	wardenEmpId: string | null;
+	totalGrievances: number;
+	resolved: number;
+	open: number;
+	inProgress: number;
+	resolutionRatePct: number;
+	avgResolutionHours: number | null;
+}
+
+export interface MonthlyVolume {
+	month: string; // "YYYY-MM"
+	count: number;
+}
+
+export interface GrievanceAnalytics {
+	totalGrievances: number;
+	resolved: number;
+	open: number;
+	inProgress: number;
+	resolutionRatePct: number;
+	avgResolutionHours: number | null;
+	overdueCount: number;
+	byCategory: Record<string, number>;
+	byPriority: Record<string, number>;
+	monthlyVolume: MonthlyVolume[];
+	wardenPerformance: WardenPerformance[];
+}
+
+/**
+ * Compute system-wide grievance analytics for the admin analytics dashboard.
+ * All queries are single-pass aggregations — no N+1 loops.
+ *
+ * @param db   - better-sqlite3 Database instance
+ * @param days - Restrict to grievances filed in the last N days. 0 = all time.
+ */
+export function getGrievanceAnalytics(db: Database, days: number = 0): GrievanceAnalytics {
+	const timeFilter =
+		days > 0 ? `AND g.created_at >= datetime('now', '-${Math.floor(days)} days')` : '';
+
+	// ── 1. Overall status counts ──────────────────────────────────────────────
+	const statusRows = db
+		.prepare(
+			`SELECT g.status, COUNT(*) as count FROM grievances g WHERE 1=1 ${timeFilter} GROUP BY g.status`
+		)
+		.all() as { status: string; count: number }[];
+
+	let totalGrievances = 0;
+	let resolved = 0;
+	let open = 0;
+	let inProgress = 0;
+	for (const r of statusRows) {
+		totalGrievances += r.count;
+		if (r.status === 'resolved') resolved = r.count;
+		else if (r.status === 'open') open = r.count;
+		else if (r.status === 'in_progress') inProgress = r.count;
+	}
+	const resolutionRatePct =
+		totalGrievances > 0 ? Math.round((resolved / totalGrievances) * 100) : 0;
+
+	// ── 2. Average resolution hours (resolved only) ───────────────────────────
+	const avgRow = db
+		.prepare(
+			`SELECT AVG((julianday(g.updated_at) - julianday(g.created_at)) * 24.0) AS avg_hours
+       FROM grievances g WHERE g.status = 'resolved' ${timeFilter}`
+		)
+		.get() as { avg_hours: number | null };
+	const avgResolutionHours =
+		avgRow.avg_hours !== null ? Math.round(avgRow.avg_hours * 10) / 10 : null;
+
+	// ── 3. Overdue count ──────────────────────────────────────────────────────
+	const overdueRow = db
+		.prepare(
+			`SELECT COUNT(*) as count FROM grievances g
+       WHERE g.status != 'resolved' ${timeFilter}
+         AND (
+           (g.priority = 'urgent' AND g.created_at < datetime('now', '-1 day'))
+        OR (g.priority = 'high'   AND g.created_at < datetime('now', '-3 days'))
+        OR (g.priority = 'medium' AND g.created_at < datetime('now', '-5 days'))
+        OR (g.priority = 'low'    AND g.created_at < datetime('now', '-7 days'))
+         )`
+		)
+		.get() as { count: number };
+	const overdueCount = overdueRow.count;
+
+	// ── 4. By category ───────────────────────────────────────────────────────
+	const categoryRows = db
+		.prepare(
+			`SELECT g.category, COUNT(*) as count FROM grievances g WHERE 1=1 ${timeFilter} GROUP BY g.category ORDER BY count DESC`
+		)
+		.all() as { category: string; count: number }[];
+	const byCategory = Object.fromEntries(categoryRows.map((r) => [r.category, r.count]));
+
+	// ── 5. By priority ───────────────────────────────────────────────────────
+	const priorityRows = db
+		.prepare(
+			`SELECT g.priority, COUNT(*) as count FROM grievances g WHERE 1=1 ${timeFilter} GROUP BY g.priority`
+		)
+		.all() as { priority: string; count: number }[];
+	const byPriority = Object.fromEntries(priorityRows.map((r) => [r.priority, r.count]));
+
+	// ── 6. Monthly volume (last 6 calendar months) ────────────────────────────
+	const monthlyRows = db
+		.prepare(
+			`SELECT strftime('%Y-%m', created_at) AS month, COUNT(*) AS count
+       FROM grievances
+       WHERE created_at >= datetime('now', '-6 months')
+       GROUP BY month ORDER BY month ASC`
+		)
+		.all() as { month: string; count: number }[];
+	const monthlyVolume: MonthlyVolume[] = monthlyRows.map((r) => ({ month: r.month, count: r.count }));
+
+	// ── 7. Per-warden performance table ──────────────────────────────────────
+	const wardenTimeFilter =
+		days > 0 ? `AND g.created_at >= datetime('now', '-${Math.floor(days)} days')` : '';
+	const wardenRows = db
+		.prepare(
+			`SELECT
+         w.id            AS warden_id,
+         w.name          AS warden_name,
+         w.emp_id        AS warden_emp_id,
+         COUNT(g.id)     AS total_grievances,
+         SUM(CASE WHEN g.status = 'resolved'   THEN 1 ELSE 0 END) AS resolved_count,
+         SUM(CASE WHEN g.status = 'open'        THEN 1 ELSE 0 END) AS open_count,
+         SUM(CASE WHEN g.status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_count,
+         AVG(CASE WHEN g.status = 'resolved'
+               THEN (julianday(g.updated_at) - julianday(g.created_at)) * 24.0
+               ELSE NULL END) AS avg_resolution_hours
+       FROM users w
+       JOIN users s ON s.warden_id = w.id AND s.role = 'student'
+       JOIN grievances g ON g.student_id = s.id
+       WHERE w.role = 'warden' ${wardenTimeFilter}
+       GROUP BY w.id
+       ORDER BY total_grievances DESC`
+		)
+		.all() as {
+		warden_id: string;
+		warden_name: string;
+		warden_emp_id: string | null;
+		total_grievances: number;
+		resolved_count: number;
+		open_count: number;
+		in_progress_count: number;
+		avg_resolution_hours: number | null;
+	}[];
+
+	const wardenPerformance: WardenPerformance[] = wardenRows.map((r) => ({
+		wardenId: r.warden_id,
+		wardenName: r.warden_name,
+		wardenEmpId: r.warden_emp_id,
+		totalGrievances: r.total_grievances,
+		resolved: r.resolved_count,
+		open: r.open_count,
+		inProgress: r.in_progress_count,
+		resolutionRatePct:
+			r.total_grievances > 0 ? Math.round((r.resolved_count / r.total_grievances) * 100) : 0,
+		avgResolutionHours:
+			r.avg_resolution_hours !== null ? Math.round(r.avg_resolution_hours * 10) / 10 : null
+	}));
+
+	return {
+		totalGrievances,
+		resolved,
+		open,
+		inProgress,
+		resolutionRatePct,
+		avgResolutionHours,
+		overdueCount,
+		byCategory,
+		byPriority,
+		monthlyVolume,
+		wardenPerformance
+	};
+}

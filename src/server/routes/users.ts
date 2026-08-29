@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env.ts';
 import { requireAdmin, requireUser } from '../auth/session.ts';
-import { hashPassword } from '../auth/passwords.ts';
+import { hashPassword, verifyPassword } from '../auth/passwords.ts';
 import {
 	assembleUser,
 	countUsersByRole,
 	createUser,
+	deleteSessionsForUser,
 	deleteUser,
 	findUserByEmail,
 	findUserByEmpId,
@@ -20,13 +21,99 @@ import { toPublicUser } from '../db/map.ts';
 import { HttpError } from '../http/errors.ts';
 import { securityLog } from '../logger.ts';
 import { recordAuditLog } from '../audit.ts';
-import type { Role } from '../types/index.ts';
+import type { Role, UserRow } from '../types/index.ts';
+import { MIN_PASSWORD_LENGTH } from '../config.ts';
 
 export const userRoutes = new Hono<AppEnv>();
 
 function validateEmail(email: string): boolean {
 	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
+
+/**
+ * PUT /api/users/me
+ *
+ * Allows any authenticated user to update their own contact information.
+ */
+userRoutes.put('/me', async (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+
+	let body: unknown;
+	try {
+		body = await c.req.json();
+	} catch {
+		throw new HttpError(400, 'bad_request', 'Request body must be JSON.');
+	}
+
+	if (!body || typeof body !== 'object') {
+		throw new HttpError(400, 'bad_request', 'Invalid payload.');
+	}
+
+	const raw = body as Record<string, unknown>;
+	const updates: { phone?: string | null; emergency_contact?: string | null } = {};
+
+	if (raw.phone !== undefined) {
+		updates.phone = typeof raw.phone === 'string' && raw.phone.trim() ? raw.phone.trim() : null;
+	}
+	if (raw.emergencyContact !== undefined) {
+		updates.emergency_contact = typeof raw.emergencyContact === 'string' && raw.emergencyContact.trim() ? raw.emergencyContact.trim() : null;
+	}
+
+	const updated = updateUser(db, user.id, updates);
+	return c.json({ data: assembleUser(db, updated) });
+});
+
+/**
+ * PUT /api/users/me/password
+ *
+ * Allows any authenticated user to change their password.
+ */
+userRoutes.put('/me/password', async (c) => {
+	const db = c.get('db');
+	const user = requireUser(c, db);
+
+	let body: unknown;
+	try {
+		body = await c.req.json();
+	} catch {
+		throw new HttpError(400, 'bad_request', 'Request body must be JSON.');
+	}
+
+	if (!body || typeof body !== 'object') {
+		throw new HttpError(400, 'bad_request', 'Invalid payload.');
+	}
+
+	const raw = body as Record<string, unknown>;
+	const current = typeof raw.current === 'string' ? raw.current : '';
+	const next = typeof raw.next === 'string' ? raw.next : '';
+
+	if (!current || !next) {
+		throw new HttpError(400, 'bad_request', 'Both current and new passwords are required.');
+	}
+
+	if (next.length < MIN_PASSWORD_LENGTH) {
+		throw new HttpError(400, 'bad_request', `New password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+	}
+
+	const fullUser = findUserById(db, user.id);
+	if (!fullUser) {
+		throw new HttpError(404, 'not_found', 'User not found.');
+	}
+
+	const isValid = verifyPassword(current, fullUser.password_hash);
+	if (!isValid) {
+		throw new HttpError(400, 'bad_request', 'Current password is incorrect.');
+	}
+
+	const nextHash = hashPassword(next);
+	updateUser(db, user.id, { password_hash: nextHash });
+
+	// Revoke all existing sessions so they have to log in again
+	deleteSessionsForUser(db, user.id);
+
+	return c.json({ data: null });
+});
 
 /**
  * GET /api/users/stats
@@ -78,10 +165,14 @@ userRoutes.get('/', (c) => {
 
 	const roleParam = c.req.query('role') as Role | undefined;
 
-	let users;
+	let users: UserRow[];
 	if (user.role === 'warden') {
-		// Wardens are strictly restricted to students assigned directly to them
-		users = listUsers(db, 'student', user.id);
+		// Wardens are strictly restricted to students in their assigned hostel
+		if (!user.hostel_id) {
+			users = []; // No hostel assigned means no students
+		} else {
+			users = listUsers(db, 'student', { hostelId: user.hostel_id });
+		}
 	} else {
 		// Admins can query any role or all
 		users = listUsers(db, roleParam);
@@ -144,6 +235,10 @@ userRoutes.post('/', async (c) => {
 		(typeof raw.wardenId === 'string' && raw.wardenId.trim()) ||
 		(typeof raw.warden_id === 'string' && raw.warden_id.trim()) ||
 		null;
+	let hostelId =
+		(typeof raw.hostelId === 'string' && raw.hostelId.trim()) ||
+		(typeof raw.hostel_id === 'string' && raw.hostel_id.trim()) ||
+		null;
 
 	if (!name || name.length > 100) {
 		throw new HttpError(400, 'bad_request', 'Name is required (max 100 characters).');
@@ -151,8 +246,8 @@ userRoutes.post('/', async (c) => {
 	if (!email || email.length > 254 || !validateEmail(email)) {
 		throw new HttpError(400, 'bad_request', 'A valid email address is required.');
 	}
-	if (!password || password.length < 6 || password.length > 1024) {
-		throw new HttpError(400, 'bad_request', 'Password must be between 6 and 1024 characters.');
+	if (!password || password.length < MIN_PASSWORD_LENGTH || password.length > 1024) {
+		throw new HttpError(400, 'bad_request', `Password must be between ${MIN_PASSWORD_LENGTH} and 1024 characters.`);
 	}
 	if (role !== 'student' && role !== 'warden' && role !== 'admin') {
 		throw new HttpError(400, 'bad_request', 'Role must be student, warden, or admin.');
@@ -170,6 +265,8 @@ userRoutes.post('/', async (c) => {
 		}
 		// When a warden creates a student, that student is automatically assigned to this warden
 		wardenId = user.id;
+		// They are also placed in the warden's hostel
+		hostelId = user.hostel_id;
 	}
 
 	// Duplicate email check
@@ -230,6 +327,7 @@ userRoutes.post('/', async (c) => {
 		roll_no: role === 'student' ? rollNo : null,
 		emp_id: role === 'warden' || role === 'admin' ? empId : null,
 		warden_id: role === 'student' ? wardenId : null,
+		hostel_id: hostelId,
 		created_at
 	});
 
@@ -349,6 +447,7 @@ userRoutes.patch('/:id', async (c) => {
 		roll_no?: string | null;
 		emp_id?: string | null;
 		warden_id?: string | null;
+		hostel_id?: string | null;
 	} = {};
 
 	if ('name' in raw && typeof raw.name === 'string') {
@@ -374,8 +473,8 @@ userRoutes.patch('/:id', async (c) => {
 	}
 
 	if ('password' in raw && typeof raw.password === 'string' && raw.password.length > 0) {
-		if (raw.password.length < 6 || raw.password.length > 1024) {
-			throw new HttpError(400, 'bad_request', 'Password must be between 6 and 1024 characters.');
+		if (raw.password.length < MIN_PASSWORD_LENGTH || raw.password.length > 1024) {
+			throw new HttpError(400, 'bad_request', `Password must be between ${MIN_PASSWORD_LENGTH} and 1024 characters.`);
 		}
 		updates.password_hash = hashPassword(raw.password);
 	}
@@ -436,7 +535,28 @@ userRoutes.patch('/:id', async (c) => {
 		updates.warden_id = wVal;
 	}
 
+	if ('hostelId' in raw || 'hostel_id' in raw) {
+		if (user.role !== 'admin') {
+			throw new HttpError(403, 'unauthorized', 'Only administrators can reassign users to different hostels.');
+		}
+		const hVal = typeof raw.hostelId === 'string' ? raw.hostelId.trim() : typeof raw.hostel_id === 'string' ? raw.hostel_id.trim() : null;
+		// If provided, verify hostel exists. If null, it just unassigns them.
+		if (hVal) {
+			const existing = db.prepare('SELECT id FROM hostels WHERE id = ?').get(hVal);
+			if (!existing) {
+				throw new HttpError(400, 'bad_request', 'Invalid hostel ID.');
+			}
+		}
+		updates.hostel_id = hVal;
+	}
+
 	const updated = updateUser(db, targetId, updates);
+
+	// SECURITY: If a password change was included, invalidate ALL existing sessions
+	// for that user so captured tokens become useless after a password reset.
+	if (updates.password_hash !== undefined) {
+		deleteSessionsForUser(db, targetId);
+	}
 
 	recordAuditLog(c, db, {
 		eventType: 'user.updated',
@@ -519,6 +639,23 @@ userRoutes.delete('/:id', (c) => {
 		throw new HttpError(403, 'unauthorized', 'Wardens cannot delete warden accounts.');
 	}
 
+	// SECURITY FIX: Warden can only delete students assigned to them
+	if (user.role === 'warden' && targetUser.role === 'student' && targetUser.warden_id !== user.id) {
+		recordAuditLog(c, db, {
+			eventType: 'auth.unauthorized',
+			action: 'Warden attempted to delete a student assigned to another warden',
+			actorId: user.id,
+			actorName: user.name,
+			actorEmail: user.email,
+			actorRole: user.role,
+			targetId: targetUser.id,
+			targetType: 'user',
+			details: { reason: 'warden_mismatch_delete' },
+			status: 'warning'
+		});
+		throw new HttpError(403, 'unauthorized', 'You can only delete students assigned to you.');
+	}
+
 	deleteUser(db, targetId, c.get('uploadsDir'));
 
 	recordAuditLog(c, db, {
@@ -539,4 +676,86 @@ userRoutes.delete('/:id', (c) => {
 	});
 
 	return c.json({ ok: true });
+});
+
+/**
+ * POST /api/users/me/change-password
+ *
+ * Self-service password change for any authenticated user.
+ * - Requires the current password to be verified (prevents session-hijack silent takeover).
+ * - Enforces the same minimum password length as account creation.
+ * - Invalidates ALL other sessions for the user upon success — the caller's
+ *   current session remains valid so they don't get logged out.
+ */
+userRoutes.post('/me/change-password', async (c) => {
+	const db = c.get('db');
+	const sessionUser = requireUser(c, db);
+
+	let body: unknown;
+	try {
+		body = await c.req.json();
+	} catch {
+		throw new HttpError(400, 'bad_request', 'Request body must be JSON.');
+	}
+	if (!body || typeof body !== 'object') {
+		throw new HttpError(400, 'bad_request', 'Request body must be JSON.');
+	}
+
+	const raw = body as Record<string, unknown>;
+	const currentPassword = typeof raw.currentPassword === 'string' ? raw.currentPassword : '';
+	const newPassword = typeof raw.newPassword === 'string' ? raw.newPassword : '';
+
+	if (!currentPassword) {
+		throw new HttpError(400, 'bad_request', 'Current password is required.');
+	}
+	if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH || newPassword.length > 1024) {
+		throw new HttpError(400, 'bad_request', `New password must be between ${MIN_PASSWORD_LENGTH} and 1024 characters.`);
+	}
+	if (currentPassword === newPassword) {
+		throw new HttpError(400, 'bad_request', 'New password must be different from your current password.');
+	}
+
+	// Load the full user row to access the hashed password
+	const fullUser = findUserById(db, sessionUser.id);
+	if (!fullUser) {
+		throw new HttpError(404, 'not_found', 'User not found.');
+	}
+
+	// Verify current password before allowing the change
+	const valid = verifyPassword(currentPassword, fullUser.password_hash);
+	if (!valid) {
+		recordAuditLog(c, db, {
+			eventType: 'auth.password_change_failed',
+			action: 'Self-service password change failed — wrong current password',
+			actorId: sessionUser.id,
+			actorName: sessionUser.name,
+			actorEmail: sessionUser.email,
+			actorRole: sessionUser.role,
+			targetId: sessionUser.id,
+			targetType: 'user',
+			status: 'warning'
+		});
+		throw new HttpError(401, 'unauthenticated', 'Current password is incorrect.');
+	}
+
+	const newHash = hashPassword(newPassword);
+	updateUser(db, sessionUser.id, { password_hash: newHash });
+
+	// Invalidate ALL sessions for this user (including the current one's siblings)
+	// to ensure any captured old session tokens are revoked.
+	deleteSessionsForUser(db, sessionUser.id);
+
+	recordAuditLog(c, db, {
+		eventType: 'user.password_changed',
+		action: 'User changed their own password',
+		actorId: sessionUser.id,
+		actorName: sessionUser.name,
+		actorEmail: sessionUser.email,
+		actorRole: sessionUser.role,
+		targetId: sessionUser.id,
+		targetType: 'user',
+		status: 'success'
+	});
+
+	return c.json({ ok: true, message: 'Password changed successfully. Please log in again.' });
 });

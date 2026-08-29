@@ -47,8 +47,9 @@ attachmentRoutes.get('/:id', (c) => {
 		throw new HttpError(404, 'not_found', 'Attachment was not found.');
 	}
 
-	// CRITICAL: authorize against the grievance owner — students only see their own
-	assertCanViewGrievance(user, grievanceRow);
+	// CRITICAL: authorize against the grievance owner — students only see their own;
+	// wardens see only their assigned students' grievances
+	assertCanViewGrievance(user, grievanceRow, db);
 
 	let bytes: Buffer | Uint8Array;
 	try {
@@ -61,12 +62,16 @@ attachmentRoutes.get('/:id', (c) => {
 		}
 	}
 
-	// Force download (not inline) to prevent the browser from executing or rendering
-	// potentially malicious content as if it were a trusted resource
-	const safeFilename = attachmentRow.original_filename.replaceAll('"', '').replaceAll('\n', '').replaceAll('\r', '');
+	// Content-Disposition: 'inline' allows previewing images/PDFs in the browser.
+	// 'attachment' forces download. We default to attachment for safety but allow inline via query.
+	// We use RFC 5987 filename*=UTF-8'' encoding to safely handle any characters in the filename.
+	const isInline = c.req.query('inline') === 'true';
+	const dispositionType = isInline ? 'inline' : 'attachment';
+	const safeFilename = encodeURIComponent(attachmentRow.original_filename);
+
 	c.header('Content-Type', attachmentRow.mime_type);
 	c.header('Content-Length', String(bytes.length));
-	c.header('Content-Disposition', `attachment; filename="${safeFilename}"`);
+	c.header('Content-Disposition', `${dispositionType}; filename*=UTF-8''${safeFilename}`);
 	// Prevent the browser from re-interpreting the content type
 	c.header('X-Content-Type-Options', 'nosniff');
 

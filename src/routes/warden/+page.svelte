@@ -14,11 +14,13 @@
 	import StatCard from '$lib/components/app/stat-card.svelte';
 	import EmptyState from '$lib/components/app/empty-state.svelte';
 	import ErrorState from '$lib/components/app/error-state.svelte';
-	import { grievanceService } from '$lib/services';
-	import type { Grievance } from '$lib/types';
+	import { grievanceService, noticeService } from '$lib/services';
+	import type { Grievance, Notice } from '$lib/types';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import MegaphoneIcon from '@lucide/svelte/icons/megaphone';
 
 	let grievances = $state<Grievance[]>([]);
+	let notices = $state<Notice[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
@@ -34,12 +36,21 @@
 	async function load() {
 		loading = true;
 		error = null;
-		const result = await grievanceService.listAll();
-		if (result.ok) {
-			grievances = result.data;
+		const [grievanceRes, noticeRes] = await Promise.all([
+			grievanceService.listAll(),
+			noticeService.list()
+		]);
+
+		if (grievanceRes.ok) {
+			grievances = grievanceRes.data;
 		} else {
-			error = result.error;
+			error = grievanceRes.error;
 		}
+
+		if (noticeRes.ok) {
+			notices = noticeRes.data;
+		}
+		
 		loading = false;
 	}
 
@@ -56,6 +67,23 @@
 		</Button>
 	{/snippet}
 </PageHeader>
+
+{#if notices.length > 0}
+	<div class="mb-6 space-y-3">
+		{#each notices as notice}
+			<div class="flex gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+				<MegaphoneIcon class="mt-0.5 size-5 text-primary shrink-0" />
+				<div class="space-y-1">
+					<h4 class="font-semibold text-primary">{notice.title}</h4>
+					<p class="text-muted-foreground whitespace-pre-wrap">{notice.body}</p>
+					<div class="text-xs text-primary/70 pt-1">
+						Posted by {notice.author_name} ({notice.author_role}) on {new Date(notice.created_at).toLocaleString()}
+					</div>
+				</div>
+			</div>
+		{/each}
+	</div>
+{/if}
 
 {#if loading}
 	<div class="grid gap-4 sm:grid-cols-4">

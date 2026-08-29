@@ -17,13 +17,14 @@
 	let title = $state('');
 	let category = $state<GrievanceCategory | ''>('');
 	let description = $state('');
+	let availableTime = $state('');
 	let attachment = $state<AttachmentInput | null>(null);
 
 	let submitted = $state(false);
 	let submitting = $state(false);
 
 	const errors = $derived.by(() => {
-		const e: { title?: string; category?: string; description?: string } = {};
+		const e: { title?: string; category?: string; description?: string; availableTime?: string } = {};
 		if (submitted) {
 			if (!title.trim()) e.title = 'Title is required.';
 			else if (title.trim().length < 5) e.title = 'Title must be at least 5 characters.';
@@ -31,6 +32,7 @@
 			if (!description.trim()) e.description = 'Description is required.';
 			else if (description.trim().length < 20)
 				e.description = 'Please describe the issue in at least 20 characters.';
+			if (!availableTime.trim()) e.availableTime = 'Available time is required.';
 		}
 		return e;
 	});
@@ -65,6 +67,7 @@
 			title: title.trim(),
 			category: category as GrievanceCategory,
 			description: description.trim(),
+			availableTime: availableTime.trim(),
 			attachment
 		});
 		submitting = false;
@@ -145,6 +148,20 @@
 				/>
 				{#if errors.description}
 					<p id="description-error" class="text-destructive text-sm" role="alert">{errors.description}</p>
+				{/if}
+			</div>
+
+			<div class="space-y-1.5">
+				<Label for="availableTime">Available Time <span class="text-destructive" aria-hidden="true">*</span></Label>
+				<Input
+					id="availableTime"
+					placeholder="When can the warden/staff visit? e.g., Weekdays after 5 PM"
+					bind:value={availableTime}
+					aria-invalid={errors.availableTime ? 'true' : undefined}
+					aria-describedby={errors.availableTime ? 'availableTime-error' : undefined}
+				/>
+				{#if errors.availableTime}
+					<p id="availableTime-error" class="text-destructive text-sm" role="alert">{errors.availableTime}</p>
 				{/if}
 			</div>
 

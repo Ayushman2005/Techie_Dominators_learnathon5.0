@@ -4,5 +4,8 @@ export {
 	commentService,
 	grievanceService,
 	userService,
-	auditLogService
+	auditLogService,
+	noticeService,
+	hostelService,
+	analyticsService
 } from './api';
