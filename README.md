@@ -150,7 +150,7 @@ Pre-seeded accounts are readily available in `data/hostel.db` for instant evalua
 
 
 > [!TIP]
-> You can also click the quick-login demo shortcuts on the login page ([http://localhost:5173/login](http://localhost:5173/login)) to autofill credentials for any of these accounts instantly.
+> You can also click the quick-login demo shortcuts on the login page ([http://localhost:5173/login](http://localhost:5173/login)) to autofill credentials for any of these accounts instantly. The loading can be a bit slow because of the CSRF Token.
 
 ---
 
