@@ -33,8 +33,8 @@
 | # | Name | Role |
 |---|------|------|
 | 1 | **Ayushman Kar** | Lead Developer |
-| 2 | **Kaushik Mohanty** | Backend & Security |
-| 3 | **Ayush Raj** | Frontend & UI |
+| 2 | **Kaushik Mohanty** | Frontend & UI |
+| 3 | **Ayush Raj** | Backend & Security |
 
 ---
 
