@@ -15,9 +15,6 @@ export function getClientIp(c: Context): string {
 	return '127.0.0.1';
 }
 
-/**
- * Record an audit log event in the database and emit structured console log.
- */
 export function recordAuditLog(
 	c: Context,
 	db: Database,
@@ -29,7 +26,6 @@ export function recordAuditLog(
 		ipAddress
 	});
 
-	// Synchronize with existing security logger if applicable
 	const securityEvents: Record<string, SecurityEventType> = {
 		'auth.login_success': 'login_success',
 		'auth.login_failed': 'login_failure',

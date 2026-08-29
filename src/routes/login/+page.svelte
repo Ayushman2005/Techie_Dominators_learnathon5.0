@@ -1,5 +1,4 @@
-<script lang="ts">
-	import { goto } from '$app/navigation';
+<script lang="ts">	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -30,7 +29,6 @@
 		submitting = false;
 
 		if (result.ok) {
-			// getSession() is already updated; route guard redirects by role.
 			const { getSession } = await import('$lib/stores/auth.svelte');
 			const user = getSession();
 			const target = user?.role === 'admin' ? '/admin' : user?.role === 'warden' ? '/warden' : '/student';

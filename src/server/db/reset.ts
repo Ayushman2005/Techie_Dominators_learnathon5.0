@@ -12,7 +12,6 @@ function removeIfExists(path: string): void {
 		try {
 			unlinkSync(path);
 		} catch {
-			// Ignored if file is locked by a running process on Windows
 		}
 	}
 }

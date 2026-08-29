@@ -1,5 +1,4 @@
-<script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
+<script lang="ts">	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '$lib/components/ui/card/index.js';
 	import {
@@ -38,7 +37,6 @@
 	let statsLoading = $state(true);
 	let error = $state<string | null>(null);
 
-	// Filters & Pagination
 	let activeRole = $state<AuditLogRole | 'all'>('all');
 	let activeStatus = $state<AuditLogStatus | 'all'>('all');
 	let searchQuery = $state('');
@@ -47,11 +45,9 @@
 	let totalItems = $state(0);
 	let totalPages = $state(1);
 
-	// Live auto-refresh toggle
 	let autoRefresh = $state(false);
 	let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-	// Inspector Dialog
 	let inspectorOpen = $state(false);
 	let selectedLog = $state<AuditLog | null>(null);
 
@@ -202,7 +198,6 @@
 		toast.success('Audit event JSON copied to clipboard.');
 	}
 
-	// Initial load
 	loadStats();
 	loadLogs();
 
@@ -250,7 +245,6 @@
 	{/snippet}
 </PageHeader>
 
-<!-- STATS CARDS (Black & White Minimalist) -->
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
 	<Card class="bg-card shadow-xs border">
 		<CardHeader class="pb-2 flex flex-row items-center justify-between">
@@ -313,9 +307,7 @@
 	</Card>
 </div>
 
-<!-- FILTER CONTROLS TOOLBAR -->
 <div class="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-	<!-- Search box -->
 	<div class="relative w-full max-w-sm">
 		<SearchIcon class="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
 		<Input
@@ -327,9 +319,7 @@
 		/>
 	</div>
 
-	<!-- Filter Pills -->
 	<div class="flex flex-wrap items-center gap-2">
-		<!-- Role Tabs -->
 		<div class="bg-muted inline-flex rounded-lg p-1 text-xs border">
 			<button
 				class="rounded-md px-2.5 py-1 font-medium transition-colors {activeRole === 'all'
@@ -373,7 +363,6 @@
 			</button>
 		</div>
 
-		<!-- Status Filter -->
 		<select
 			class="flex h-8 rounded-lg border border-input bg-background px-2.5 py-1 text-xs shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 			value={activeStatus}
@@ -388,7 +377,6 @@
 	</div>
 </div>
 
-<!-- AUDIT LOGS TABLE -->
 <Card>
 	<CardContent class="p-0">
 		{#if loading && logs.length === 0}
@@ -422,13 +410,11 @@
 					{#each logs as log (log.id)}
 						{@const time = formatDate(log.createdAt)}
 						<TableRow class="hover:bg-muted/40 transition-colors">
-							<!-- Timestamp -->
 							<TableCell class="font-mono text-xs text-muted-foreground whitespace-nowrap">
 								<div class="font-medium text-foreground">{time.relative}</div>
 								<div class="text-[10px] text-muted-foreground" title={time.full}>{time.full.split(',')[1]}</div>
 							</TableCell>
 
-							<!-- Actor -->
 							<TableCell>
 								<div class="flex items-center gap-2">
 									{#if log.actorRole === 'student'}
@@ -457,7 +443,6 @@
 								</div>
 							</TableCell>
 
-							<!-- Action -->
 							<TableCell>
 								<div class="space-y-0.5">
 									<p class="text-xs font-semibold text-foreground">{log.action}</p>
@@ -472,7 +457,6 @@
 								</div>
 							</TableCell>
 
-							<!-- Target -->
 							<TableCell>
 								{#if log.targetId}
 									{#if log.targetType === 'grievance' || log.targetId.startsWith('GRV-')}
@@ -499,7 +483,6 @@
 								{/if}
 							</TableCell>
 
-							<!-- Status -->
 							<TableCell>
 								{#if log.status === 'success'}
 									<span class="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-foreground border border-border">
@@ -520,7 +503,6 @@
 								{/if}
 							</TableCell>
 
-							<!-- Actions -->
 							<TableCell class="text-right">
 								<Button
 									variant="ghost"
@@ -540,7 +522,6 @@
 	</CardContent>
 </Card>
 
-<!-- PAGINATION -->
 {#if totalPages > 1}
 	<div class="mt-4 flex items-center justify-between">
 		<p class="text-xs text-muted-foreground">
@@ -570,7 +551,6 @@
 	</div>
 {/if}
 
-<!-- INSPECTOR DIALOG -->
 <Dialog.Root bind:open={inspectorOpen}>
 	<Dialog.Content class="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
 		<Dialog.Header>
@@ -589,7 +569,6 @@
 
 		{#if selectedLog}
 			<div class="space-y-4 py-2">
-				<!-- Summary Grid -->
 				<div class="grid grid-cols-2 gap-3 bg-muted/40 p-3 rounded-lg text-xs">
 					<div>
 						<span class="text-muted-foreground block text-[11px]">Action</span>
@@ -617,7 +596,6 @@
 					</div>
 				</div>
 
-				<!-- Raw Payload / Details JSON -->
 				<div>
 					<div class="flex items-center justify-between mb-1.5">
 						<span class="text-xs font-semibold text-foreground">Payload & Context Details</span>

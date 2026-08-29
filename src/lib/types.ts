@@ -1,8 +1,3 @@
-/**
- * HostelGrievance — domain types.
- * These mirror the shape the future Hono API will return.
- */
-
 export type Role = 'student' | 'warden' | 'admin';
 
 export type GrievanceStatus = 'Open' | 'In Progress' | 'Resolved';
@@ -26,17 +21,11 @@ export interface User {
 	name: string;
 	email: string;
 	role: Role;
-	/** For students: hostel room identifier shown to wardens. */
 	room?: string | null;
-	/** For students: unique roll number / Student ID. */
 	rollNo?: string | null;
-	/** For students: alias for rollNo / Student ID. */
 	studentId?: string | null;
-	/** For wardens / admins: unique employee staff ID. */
 	empId?: string | null;
-	/** For students: assigned warden's user ID (1-to-1 mapping). */
 	wardenId?: string | null;
-	/** For students: populated assigned warden profile. */
 	warden?: User | null;
 	createdAt?: string;
 }
@@ -69,7 +58,6 @@ export interface Attachment {
 	id: string;
 	filename: string;
 	sizeBytes: number;
-	/** MIME type; the backend will later enforce allowed types authoritatively. */
 	contentType: string;
 }
 
@@ -77,10 +65,9 @@ export interface Comment {
 	id: string;
 	grievanceId: string;
 	authorId: string;
-	/** Denormalized for convenient display; API will provide this. */
 	author: User;
 	body: string;
-	createdAt: string; // ISO timestamp
+	createdAt: string;
 }
 
 export interface ResolutionReview {
@@ -102,21 +89,18 @@ export interface Grievance {
 	category: GrievanceCategory;
 	status: GrievanceStatus;
 	studentId: string;
-	/** Denormalized for warden list display. */
 	student: User;
-	createdAt: string; // ISO timestamp
-	updatedAt: string; // ISO timestamp
+	createdAt: string;
+	updatedAt: string;
 	attachments: Attachment[];
 	comments: Comment[];
 	review?: ResolutionReview | null;
 }
 
-/** Result of a mock sign-in attempt. */
 export type AuthResult =
 	| { ok: true; user: User }
 	| { ok: false; error: string };
 
-/** Result wrapper for operations that can fail generically. */
 export type Result<T> =
 	| { ok: true; data: T }
 	| { ok: false; error: string };

@@ -159,7 +159,6 @@
 				</CardContent>
 			</Card>
 
-			<!-- Resolution Review & Solution Photo Verification -->
 			{#if g.status === 'Resolved' || g.review}
 				<ResolutionReviewCard
 					grievance={g}

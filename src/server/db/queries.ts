@@ -237,7 +237,6 @@ export function updateUser(
 }
 
 export function deleteUser(db: Database, id: string, uploadsDir: string = DEFAULT_UPLOADS_DIR): void {
-	// First clean up any attachments stored on disk if needed, cascading foreign keys delete db rows
 	const grievances = db.prepare('SELECT id FROM grievances WHERE student_id = ?').all(id) as { id: string }[];
 	for (const g of grievances) {
 		deleteGrievance(db, g.id, uploadsDir);

@@ -1,9 +1,3 @@
-/**
- * Mock implementation of the service layer.
- * In-memory store, deterministic IDs, small artificial latency so
- * loading states are real and testable. Swap this module for a Hono
- * API client later without touching any UI code.
- */
 import {
 	MOCK_CREDENTIALS,
 	MOCK_NOW,
@@ -41,10 +35,6 @@ function delay<T>(value: T, ms = LATENCY_MS): Promise<T> {
 
 const SESSION_KEY = 'hg.session.userId';
 
-/**
- * Module-level store. In SvelteKit this survives client-side navigation.
- * Session identity is mirrored to localStorage for restore().
- */
 const grievances: Grievance[] = buildSeedGrievances();
 
 function nextGrievanceId(): string {
@@ -56,17 +46,12 @@ function nextGrievanceId(): string {
 }
 
 function nowIso(): string {
-	// Deterministic "current time" for the mock; the API will use real time.
 	return MOCK_NOW;
 }
 
 function touch(g: Grievance): void {
 	g.updatedAt = nowIso();
 }
-
-// ---------------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------------
 
 class MockAuthService implements AuthService {
 	private currentUser: User | null = null;
@@ -86,7 +71,6 @@ class MockAuthService implements AuthService {
 		try {
 			localStorage.setItem(SESSION_KEY, user.id);
 		} catch {
-			// localStorage unavailable — session lives in memory only.
 		}
 		return delay({ ok: true as const, user });
 	}
@@ -96,7 +80,6 @@ class MockAuthService implements AuthService {
 		try {
 			localStorage.removeItem(SESSION_KEY);
 		} catch {
-			/* ignore */
 		}
 	}
 
@@ -116,10 +99,6 @@ class MockAuthService implements AuthService {
 function findUser(id: string): User | null {
 	return MOCK_USERS[id] ?? null;
 }
-
-// ---------------------------------------------------------------------------
-// Users
-// ---------------------------------------------------------------------------
 
 function enrichUser(u: User): User {
 	const clone = { ...u };
@@ -196,10 +175,6 @@ class MockUserService implements UserService {
 		return delay({ ok: true as const, data: stats });
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Grievances
-// ---------------------------------------------------------------------------
 
 class MockGrievanceService implements GrievanceService {
 	async listForStudent(studentId: string): Promise<Result<Grievance[]>> {
@@ -316,10 +291,6 @@ class MockGrievanceService implements GrievanceService {
 		return delay({ ok: true as const, data: g.review ? { ...g.review } : null });
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Comments
-// ---------------------------------------------------------------------------
 
 class MockCommentService implements CommentService {
 	private seq = 100;

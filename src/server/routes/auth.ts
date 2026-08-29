@@ -17,15 +17,6 @@ import { recordAuditLog } from '../audit.ts';
 
 export const authRoutes = new Hono<AppEnv>();
 
-/**
- * POST /api/login
- *
- * Rate limited to 10 attempts per 15 minutes per IP.
- * Returns a generic error for both "user not found" and "wrong password"
- * to prevent username/email enumeration.
- *
- * Never logs passwords — only the email (for forensic correlation) and result.
- */
 authRoutes.post('/login', loginRateLimit, async (c) => {
 	const db = c.get('db');
 	let body: unknown;
@@ -43,14 +34,11 @@ authRoutes.post('/login', loginRateLimit, async (c) => {
 		throw new HttpError(400, 'bad_request', 'Email and password are required.');
 	}
 
-	// Enforce reasonable input length limits to prevent DoS via large inputs
 	if (email.length > 254 || password.length > 1024) {
 		throw new HttpError(400, 'bad_request', 'Email and password are required.');
 	}
 
 	const user = findUserByEmail(db, email);
-	// Always call verifyPassword even when user is not found, to prevent
-	// timing-based username enumeration attacks
 	const passwordValid = user ? verifyPassword(password, user.password_hash) : false;
 
 	if (!user || !passwordValid) {
@@ -61,7 +49,6 @@ authRoutes.post('/login', loginRateLimit, async (c) => {
 			details: { email },
 			status: 'warning'
 		});
-		// Generic message — never reveal whether the email exists or the password is wrong
 		throw new HttpError(401, 'unauthenticated', 'Invalid email or password.');
 	}
 
@@ -83,13 +70,6 @@ authRoutes.post('/login', loginRateLimit, async (c) => {
 	return c.json({ user: assembleUser(db, user) });
 });
 
-/**
- * POST /api/logout
- *
- * Destroys the session server-side AND clears the browser cookie.
- * Without server-side destruction, an attacker who captured the cookie
- * could continue using it even after the user logs out.
- */
 authRoutes.post('/logout', (c) => {
 	const db = c.get('db');
 	const token = optionalToken(c);
@@ -97,7 +77,6 @@ authRoutes.post('/logout', (c) => {
 		const sessionRow = db.prepare('SELECT user_id FROM sessions WHERE token = ?').get(token) as { user_id: string } | undefined;
 		const user = sessionRow ? findUserById(db, sessionRow.user_id) : undefined;
 
-		// Invalidate session in database — token is now permanently unusable
 		destroySession(db, token);
 
 		if (user) {
@@ -125,12 +104,6 @@ authRoutes.post('/logout', (c) => {
 	return c.json({ ok: true });
 });
 
-/**
- * GET /api/me
- *
- * Returns the current authenticated user's public profile.
- * Useful for session restoration on page load.
- */
 authRoutes.get('/me', (c) => {
 	const db = c.get('db');
 	const sessionUser = requireUser(c, db);

@@ -2,7 +2,6 @@ export type Role = 'student' | 'warden' | 'admin';
 
 export type GrievanceStatusDb = 'open' | 'in_progress' | 'resolved';
 
-/** Status strings the Svelte UI already uses. */
 export type GrievanceStatusUi = 'Open' | 'In Progress' | 'Resolved';
 
 export type GrievanceCategory =

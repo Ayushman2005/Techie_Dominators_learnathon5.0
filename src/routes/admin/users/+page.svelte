@@ -1,5 +1,4 @@
-<script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
+<script lang="ts">	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Card, CardContent } from '$lib/components/ui/card/index.js';
@@ -39,7 +38,6 @@
 	let activeTab = $state<'all' | Role>('all');
 	let searchQuery = $state('');
 
-	// Dialog states
 	let addDialogOpen = $state(false);
 	let editDialogOpen = $state(false);
 	let deleteDialogOpen = $state(false);
@@ -47,7 +45,6 @@
 	let selectedUser = $state<User | null>(null);
 	let formSubmitting = $state(false);
 
-	// Add Form fields
 	let addName = $state('');
 	let addEmail = $state('');
 	let addPassword = $state('');
@@ -57,7 +54,6 @@
 	let addEmpId = $state('');
 	let addWardenId = $state('');
 
-	// Edit Form fields
 	let editName = $state('');
 	let editEmail = $state('');
 	let editPassword = $state('');
@@ -277,7 +273,6 @@
 	{/snippet}
 </PageHeader>
 
-<!-- Controls: Role Filter & Search -->
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 	<div class="flex items-center gap-1 bg-muted/60 p-1 rounded-lg border">
 		<Button
@@ -445,7 +440,6 @@
 	</Card>
 {/if}
 
-<!-- ADD USER DIALOG -->
 <Dialog.Root bind:open={addDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
@@ -466,7 +460,6 @@
 				<Input id="add-password" type="password" bind:value={addPassword} placeholder="•••••••• (min 6 characters)" required />
 			</div>
 			
-			<!-- Role Selector -->
 			<div class="space-y-1">
 				<Label for="add-role">Account Role *</Label>
 				<select
@@ -492,7 +485,6 @@
 					</div>
 				</div>
 
-				<!-- Assigned Warden Dropdown -->
 				<div class="space-y-1">
 					<Label for="add-warden">Assigned Warden (Mandatory 1-to-1 Mapping) *</Label>
 					<select
@@ -534,7 +526,6 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<!-- EDIT USER DIALOG -->
 <Dialog.Root bind:open={editDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
@@ -580,7 +571,6 @@
 					</div>
 				</div>
 
-				<!-- Assigned Warden Dropdown -->
 				<div class="space-y-1">
 					<Label for="edit-warden">Assigned Warden (Mandatory 1-to-1 Mapping) *</Label>
 					<select
@@ -621,7 +611,6 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<!-- DELETE USER CONFIRMATION DIALOG -->
 <Dialog.Root bind:open={deleteDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>

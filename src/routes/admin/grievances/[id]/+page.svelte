@@ -143,7 +143,6 @@
 
 	<div class="grid gap-6 lg:grid-cols-3">
 		<div class="space-y-6 lg:col-span-2">
-			<!-- Grievance Description -->
 			<Card>
 				<CardHeader>
 					<CardTitle>Description</CardTitle>
@@ -153,7 +152,6 @@
 				</CardContent>
 			</Card>
 
-			<!-- Attachments -->
 			{#if grievance.attachments.length > 0}
 				<Card>
 					<CardHeader>
@@ -169,7 +167,6 @@
 				</Card>
 			{/if}
 
-			<!-- Resolution Review & Solution Photo Verification -->
 			{#if grievance.status === 'Resolved' || grievance.review}
 				<ResolutionReviewCard
 					{grievance}
@@ -178,7 +175,6 @@
 				/>
 			{/if}
 
-			<!-- Comments Timeline & Form -->
 			<Card>
 				<CardHeader>
 					<CardTitle>Discussion & Investigation Log</CardTitle>
@@ -200,7 +196,6 @@
 			</Card>
 		</div>
 
-		<!-- Sidebar: Details and Status Control -->
 		<div class="space-y-6">
 			<Card>
 				<CardHeader>
@@ -275,7 +270,6 @@
 	</div>
 {/if}
 
-<!-- DELETE GRIEVANCE CONFIRMATION DIALOG -->
 <Dialog.Root bind:open={deleteDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>

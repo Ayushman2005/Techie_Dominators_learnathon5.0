@@ -7,11 +7,6 @@ import type { AuditLogRole, AuditLogStatus } from '../types/index.ts';
 
 export const auditRoutes = new Hono<AppEnv>();
 
-/**
- * GET /api/audit-logs/stats
- *
- * Aggregated audit activity metrics for admin dashboards. Admin-only.
- */
 auditRoutes.get('/stats', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -21,11 +16,6 @@ auditRoutes.get('/stats', (c) => {
 	return c.json({ data: stats });
 });
 
-/**
- * GET /api/audit-logs/export
- *
- * Export all matching audit logs as CSV or JSON for compliance and reporting. Admin-only.
- */
 auditRoutes.get('/export', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);
@@ -37,7 +27,6 @@ auditRoutes.get('/export', (c) => {
 	const status = c.req.query('status') as AuditLogStatus | 'all' | undefined;
 	const search = c.req.query('search');
 
-	// Limit to 5000 records for export
 	const rows = listAuditLogs(db, {
 		role: role || undefined,
 		eventType: eventType || undefined,
@@ -93,12 +82,6 @@ auditRoutes.get('/export', (c) => {
 	return c.json({ data: logs });
 });
 
-/**
- * GET /api/audit-logs
- *
- * List paginated audit logs with search and filtering.
- * Strictly admin-only (enforced via requireAdmin).
- */
 auditRoutes.get('/', (c) => {
 	const db = c.get('db');
 	const user = requireUser(c, db);

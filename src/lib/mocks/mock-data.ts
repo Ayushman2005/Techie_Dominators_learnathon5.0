@@ -1,8 +1,3 @@
-/**
- * Deterministic mock data for HostelGrievance.
- * All timestamps and IDs are fixed so every run renders identically.
- * This module is the ONLY place raw mock content lives.
- */
 import type {
 	Attachment,
 	Comment,
@@ -12,7 +7,6 @@ import type {
 	User
 } from '$lib/types';
 
-// Fixed "now" so relative rendering is deterministic: 2026-08-20T10:00:00Z
 export const MOCK_NOW = '2026-08-20T10:00:00.000Z';
 
 export const MOCK_USERS: Record<string, User> = {
@@ -66,7 +60,6 @@ export const MOCK_USERS: Record<string, User> = {
 	}
 };
 
-/** Development-only mock credentials (documented, not real security credentials). */
 export const MOCK_CREDENTIALS = [
 	{ email: 'student@example.test', password: 'student123', userId: 'stu-1' },
 	{ email: 'warden@example.test', password: 'warden123', userId: 'war-1' },
@@ -272,7 +265,6 @@ export const MOCK_GRIEVANCES: SeedGrievance[] = [
 	}
 ];
 
-/** Fully assembled, immutable seed grievances (as the API would return them). */
 export function buildSeedGrievances(): Grievance[] {
 	return MOCK_GRIEVANCES.map((g) => {
 		const student = MOCK_USERS[g.studentId];

@@ -96,7 +96,6 @@
 	description="Complete overview and administration of student complaints and requests."
 />
 
-<!-- Filter controls -->
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 	<div class="flex items-center gap-1 bg-muted/60 p-1 rounded-lg border">
 		<Button
@@ -209,7 +208,6 @@
 	</Card>
 {/if}
 
-<!-- DELETE GRIEVANCE CONFIRMATION DIALOG -->
 <Dialog.Root bind:open={deleteDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
