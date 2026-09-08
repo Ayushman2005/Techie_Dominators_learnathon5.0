@@ -4,19 +4,17 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "vite",
 		"dev:api": "tsx watch src/server/index.ts",
 		"dev:all": "concurrently -k -n ui,api -c cyan,magenta \"npm run dev\" \"npm run dev:api\"",
 		"db:init": "tsx src/server/scripts/reset-db.ts",
 		"db:reset": "tsx src/server/scripts/reset-db.ts",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit -p tsconfig.server.json",
+		"typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
 		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+		"check": "tsc --noEmit"
 	},
 	"devDependencies": {
 		"@internationalized/date": "^3.12.3",
@@ -26,7 +24,11 @@
 		"@sveltejs/vite-plugin-svelte": "^5.0.3",
 		"@tailwindcss/vite": "^4.0.9",
 		"@types/better-sqlite3": "^9.6.0",
+		"@types/canvas-confetti": "^1.9.0",
 		"@types/node": "^22.13.5",
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "^19.2.7",
+		"@vitejs/plugin-react": "^4.7.0",
 		"bits-ui": "^2.19.0",
 		"clsx": "^2.1.1",
 		"concurrently": "^10.0.5",
@@ -47,6 +49,10 @@
 		"@types/bcryptjs": "^2.4.6",
 		"bcryptjs": "^3.0.3",
 		"better-sqlite3": "^13.0.3",
-		"hono": "^4.13.5"
+		"canvas-confetti": "^1.9.4",
+		"hono": "^4.13.5",
+		"lucide-react": "^1.43.0",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8"
 	}
 }
