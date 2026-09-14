@@ -49,7 +49,7 @@ export function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)] text-[var(--text-primary)]">
+      <div className="min-h-screen flex items-center justify-center bg-(--bg-main) text-(--text-primary)">
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center animate-pulse">
             <Building2 className="w-6 h-6 text-indigo-400" />
@@ -62,7 +62,7 @@ export function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-primary)] flex flex-col transition-colors">
+      <div className="min-h-screen bg-(--bg-main) text-(--text-primary) flex flex-col transition-colors">
         <Navbar currentTab="login" onNavigate={handleNavigate} />
         <main className="flex-1">
           <LoginPage onLoginSuccess={() => {}} />
@@ -72,7 +72,7 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-primary)] flex flex-col transition-colors">
+    <div className="min-h-screen bg-(--bg-main) text-(--text-primary) flex flex-col transition-colors">
       {/* Dynamic Navigation Bar */}
       <Navbar currentTab={currentTab} onNavigate={handleNavigate} />
 
