@@ -18,6 +18,8 @@ if (userCount(db) === 0) {
 
 const app = createApp({ db, uploadsDir });
 
-serve({ fetch: app.fetch, port: API_PORT }, (info) => {
-	console.log(`HostelGrievance API listening on http://127.0.0.1:${info.port}`);
+const hostname = process.env.HOSTEL_API_HOST ?? '0.0.0.0';
+
+serve({ fetch: app.fetch, port: API_PORT, hostname }, (info) => {
+	console.log(`HostelGrievance API listening on http://${info.address}:${info.port}`);
 });

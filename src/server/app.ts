@@ -51,11 +51,12 @@ export function createApp(options: CreateAppOptions) {
 		cors({
 			origin: (origin) => {
 				if (!origin) return undefined;
+				if (allowedOrigins.includes('*')) return origin;
 				return allowedOrigins.includes(origin) ? origin : undefined;
 			},
 			credentials: true,
 			allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-			allowHeaders: ['Content-Type', 'Cookie'],
+			allowHeaders: ['Content-Type', 'Cookie', 'X-CSRF-Token'],
 			exposeHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'Retry-After']
 		})
 	);

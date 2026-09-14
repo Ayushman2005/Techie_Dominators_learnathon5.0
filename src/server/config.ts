@@ -11,7 +11,7 @@ export const DEFAULT_DB_PATH =
 export const DEFAULT_UPLOADS_DIR =
 	process.env.HOSTEL_UPLOADS_DIR ?? path.join(REPO_ROOT, 'uploads');
 
-export const API_PORT = Number(process.env.HOSTEL_API_PORT ?? 3001);
+export const API_PORT = Number(process.env.PORT ?? process.env.HOSTEL_API_PORT ?? 3001);
 
 export const SESSION_COOKIE = 'hg_session';
 

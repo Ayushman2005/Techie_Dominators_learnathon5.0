@@ -12,6 +12,15 @@ import type {
   Comment
 } from '../types';
 
+export const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+
+export function resolveApiUrl(url: string): string {
+  if (url.startsWith('/api') && API_BASE_URL) {
+    return `${API_BASE_URL}${url}`;
+  }
+  return url;
+}
+
 function getCsrfToken(): string {
   if (typeof document === 'undefined') return '';
   const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
@@ -22,6 +31,7 @@ async function apiFetch<T = any>(
   url: string,
   options: RequestInit = {}
 ): Promise<{ ok: boolean; status: number; data?: T; error?: string }> {
+  const finalUrl = resolveApiUrl(url);
   const method = (options.method || 'GET').toUpperCase();
   const headers = new Headers(options.headers || {});
 
@@ -38,7 +48,7 @@ async function apiFetch<T = any>(
   }
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(finalUrl, {
       ...options,
       headers,
       credentials: 'include'
