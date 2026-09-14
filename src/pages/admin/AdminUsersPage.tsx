@@ -22,6 +22,7 @@ export function AdminUsersPage() {
 
   const [users, setUsers] = useState<User[]>([]);
   const [hostels, setHostels] = useState<Hostel[]>([]);
+  const [wardens, setWardens] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -37,18 +38,22 @@ export function AdminUsersPage() {
   const [rollNo, setRollNo] = useState('');
   const [empId, setEmpId] = useState('');
   const [hostelId, setHostelId] = useState('');
+  const [wardenId, setWardenId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [u, h] = await Promise.all([
+      const [u, h, w] = await Promise.all([
         api.getUsers(),
-        api.getHostels()
+        api.getHostels(),
+        api.getWardens()
       ]);
       setUsers(u);
       setHostels(h);
+      setWardens(w);
       if (h.length > 0 && !hostelId) setHostelId(h[0].id);
+      if (w.length > 0 && !wardenId) setWardenId(w[0].id);
     } catch (err: any) {
       toastError('Error', err.message);
     } finally {
@@ -71,6 +76,7 @@ export function AdminUsersPage() {
       room: role === 'student' ? room : undefined,
       rollNo: role === 'student' ? rollNo : undefined,
       empId: role !== 'student' ? empId : undefined,
+      wardenId: role === 'student' && wardenId ? wardenId : undefined,
       hostelId: hostelId || undefined
     });
     setSubmitting(false);
@@ -328,6 +334,21 @@ export function AdminUsersPage() {
                   placeholder="C-104"
                   className="w-full px-4 py-2 rounded-xl glass-input text-xs sm:text-sm"
                 />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Assigned Hostel Warden</label>
+                <select
+                  value={wardenId}
+                  onChange={e => setWardenId(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl glass-input text-xs sm:text-sm cursor-pointer"
+                >
+                  <option value="" className="bg-slate-900 text-white">None (Select Warden)</option>
+                  {wardens.map(w => (
+                    <option key={w.id} value={w.id} className="bg-slate-900 text-white">
+                      {w.name} ({w.empId || w.email})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           ) : (

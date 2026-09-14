@@ -110,14 +110,22 @@ export function AdminAuditLogsPage() {
           </p>
         </div>
 
-        {stats && (
-          <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
+          {stats && (
             <div className="glass-panel px-3.5 py-2 rounded-xl text-xs border border-white/10 text-right">
               <span className="text-slate-400 block text-[10px]">Total Security Events</span>
               <span className="font-extrabold text-white text-sm">{stats.totalEvents}</span>
             </div>
-          </div>
-        )}
+          )}
+          <a
+            href="/api/audit-logs/export?format=csv"
+            download
+            className="btn-glow inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-lg shadow-purple-600/25 shrink-0"
+            title="Download full tamper-evident audit log as CSV"
+          >
+            <Download className="w-3.5 h-3.5" /> Export CSV
+          </a>
+        </div>
       </div>
 
       {/* Filter Bar */}

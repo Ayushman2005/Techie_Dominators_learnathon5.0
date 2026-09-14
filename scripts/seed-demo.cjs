@@ -2,12 +2,18 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 
 const db = new Database('data/hostel.db');
+const admHash = bcrypt.hashSync('admin123', 10);
 const warHash = bcrypt.hashSync('warden123', 10);
 const stuHash = bcrypt.hashSync('student123', 10);
 const now = new Date().toISOString();
 
 db.exec(`INSERT OR IGNORE INTO hostels (id, name, created_at) VALUES ('hst-1', 'Boys Hostel A', '${now}');`);
 db.exec(`INSERT OR IGNORE INTO hostels (id, name, created_at) VALUES ('hst-2', 'Girls Hostel B', '${now}');`);
+
+db.exec(`
+  INSERT OR IGNORE INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, warden_id, hostel_id, created_at)
+  VALUES ('adm-1', 'Dr. S. K. Panda (Admin)', 'admin@example.test', '${admHash}', 'admin', null, null, 'ADM-0001', null, null, '${now}');
+`);
 
 db.exec(`
   INSERT OR IGNORE INTO users (id, name, email, password_hash, role, room, roll_no, emp_id, hostel_id, created_at)

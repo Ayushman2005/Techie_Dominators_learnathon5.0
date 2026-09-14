@@ -4,7 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import { api } from '../../services/apiClient';
 import type { Grievance, Notice, GrievanceCategory } from '../../types';
 import { GRIEVANCE_CATEGORIES } from '../../types';
-import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
+import { StatusBadge, PriorityBadge, SlaBadge } from '../../components/common/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
 import { CardSkeleton } from '../../components/common/Skeleton';
 import {
@@ -292,14 +292,15 @@ export function StudentDashboard({ onNavigate }: StudentDashboardProps) {
                 </p>
 
                 <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <PriorityBadge priority={item.priority} size="sm" />
+                    <SlaBadge priority={item.priority} createdAt={item.createdAt} status={item.status} size="sm" />
                     <span className="text-[11px] text-slate-500 font-medium">
                       {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </span>
                   </div>
 
-                  <span className="text-indigo-400 hover:text-indigo-300 font-semibold inline-flex items-center gap-1 text-[11px]">
+                  <span className="text-indigo-400 hover:text-indigo-300 font-semibold inline-flex items-center gap-1 text-[11px] shrink-0">
                     Track Ticket <ArrowRight className="w-3 h-3" />
                   </span>
                 </div>

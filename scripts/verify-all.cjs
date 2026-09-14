@@ -1,6 +1,11 @@
 async function verify() {
   console.log('=== 1. Testing Frontend Delivery ===');
-  const res = await fetch('http://localhost:5174/');
+  let res;
+  try {
+    res = await fetch('http://localhost:5173/');
+  } catch {
+    res = await fetch('http://localhost:5174/');
+  }
   const html = await res.text();
   console.log('Frontend Status:', res.status);
   console.log('Root Element Present:', html.includes('id="root"'));
@@ -48,7 +53,7 @@ async function verify() {
     headers: { Cookie: studentFullCookie }
   });
   const nData = await nList.json();
-  console.log('Notices Count:', nData.notices?.length || 0);
+  console.log('Notices Count:', (nData.data || nData.notices || []).length);
 
   console.log('\n=== 6. Testing Warden Authentication & Queue ===');
   const wLogin = await fetch('http://127.0.0.1:3001/api/login', {

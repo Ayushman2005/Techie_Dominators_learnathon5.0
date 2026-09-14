@@ -86,3 +86,53 @@ export function PriorityBadge({ priority = 'medium', size = 'md' }: PriorityBadg
       );
   }
 }
+
+import { getSlaStatus } from '../../lib/sla';
+
+interface SlaBadgeProps {
+  priority?: string;
+  createdAt: string;
+  status: string;
+  size?: 'sm' | 'md';
+}
+
+export function SlaBadge({ priority = 'medium', createdAt, status, size = 'sm' }: SlaBadgeProps) {
+  const sla = getSlaStatus(priority, createdAt, status);
+  const sizeClasses = size === 'sm' ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-1';
+
+  if (sla.variant === 'resolved') {
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 ${sizeClasses}`}>
+        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+        SLA Met
+      </span>
+    );
+  }
+
+  if (sla.variant === 'overdue') {
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full font-bold bg-rose-500/25 text-rose-300 border border-rose-500/50 animate-pulse shadow-sm shadow-rose-500/20 ${sizeClasses}`}>
+        <Flame className="w-3 h-3 text-rose-400" />
+        {sla.label}
+      </span>
+    );
+  }
+
+  if (sla.variant === 'at-risk') {
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 ${sizeClasses}`}>
+        <Clock className="w-3 h-3 text-amber-400" />
+        {sla.label}
+      </span>
+    );
+  }
+
+  // on-track
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 ${sizeClasses}`}>
+      <Clock className="w-3 h-3 text-cyan-400" />
+      {sla.label}
+    </span>
+  );
+}
+

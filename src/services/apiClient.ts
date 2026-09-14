@@ -141,9 +141,10 @@ export const api = {
   },
 
   async getGrievance(id: string): Promise<{ ok: boolean; grievance?: Grievance; error?: string }> {
-    const res = await apiFetch<{ grievance: Grievance }>(`/api/grievances/${id}`);
-    if (res.ok && res.data?.grievance) {
-      return { ok: true, grievance: res.data.grievance };
+    const res = await apiFetch<any>(`/api/grievances/${id}`);
+    const grievance = res.data?.data || res.data?.grievance;
+    if (res.ok && grievance) {
+      return { ok: true, grievance };
     }
     return { ok: false, error: res.error };
   },
@@ -156,6 +157,7 @@ export const api = {
     availableTime?: string;
     file?: File;
   }): Promise<{ ok: boolean; grievance?: Grievance; error?: string }> {
+    let res: { ok: boolean; status: number; data?: any; error?: string };
     if (formData.file) {
       const data = new FormData();
       data.append('title', formData.title);
@@ -165,34 +167,36 @@ export const api = {
       if (formData.availableTime) data.append('availableTime', formData.availableTime);
       data.append('file', formData.file);
 
-      const res = await apiFetch<{ grievance: Grievance }>('/api/grievances', {
+      res = await apiFetch<any>('/api/grievances', {
         method: 'POST',
         body: data
       });
-      return res.ok && res.data?.grievance
-        ? { ok: true, grievance: res.data.grievance }
-        : { ok: false, error: res.error };
     } else {
-      const res = await apiFetch<{ grievance: Grievance }>('/api/grievances', {
+      res = await apiFetch<any>('/api/grievances', {
         method: 'POST',
         body: JSON.stringify(formData)
       });
-      return res.ok && res.data?.grievance
-        ? { ok: true, grievance: res.data.grievance }
-        : { ok: false, error: res.error };
     }
+
+    const grievance = res.data?.data || res.data?.grievance;
+    return res.ok && grievance
+      ? { ok: true, grievance }
+      : { ok: false, error: res.error };
   },
 
   async updateStatus(id: string, status: GrievanceStatus, note?: string): Promise<{ ok: boolean; error?: string }> {
-    const res = await apiFetch(`/api/grievances/${id}/status`, {
+    const res = await apiFetch(`/api/grievances/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, note })
+      body: JSON.stringify({ status })
     });
+    if (res.ok && note && note.trim()) {
+      await this.addComment(id, note.trim()).catch(() => {});
+    }
     return { ok: res.ok, error: res.error };
   },
 
   async updatePriority(id: string, priority: string): Promise<{ ok: boolean; error?: string }> {
-    const res = await apiFetch(`/api/grievances/${id}/priority`, {
+    const res = await apiFetch(`/api/grievances/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ priority })
     });
@@ -200,11 +204,12 @@ export const api = {
   },
 
   async addComment(id: string, body: string): Promise<{ ok: boolean; comment?: Comment; error?: string }> {
-    const res = await apiFetch<{ comment: Comment }>(`/api/grievances/${id}/comments`, {
+    const res = await apiFetch<any>(`/api/grievances/${id}/comments`, {
       method: 'POST',
       body: JSON.stringify({ body })
     });
-    return res.ok ? { ok: true, comment: res.data?.comment } : { ok: false, error: res.error };
+    const comment = res.data?.data || res.data?.comment;
+    return res.ok ? { ok: true, comment } : { ok: false, error: res.error };
   },
 
   async submitReview(
@@ -240,8 +245,17 @@ export const api = {
 
   // Notices
   async getNotices(): Promise<Notice[]> {
-    const res = await apiFetch<{ notices: Notice[] }>('/api/notices');
-    return res.ok && res.data?.notices ? res.data.notices : [];
+    const res = await apiFetch<any>('/api/notices');
+    if (res.ok && res.data) {
+      return Array.isArray(res.data.data)
+        ? res.data.data
+        : Array.isArray(res.data.notices)
+          ? res.data.notices
+          : Array.isArray(res.data)
+            ? res.data
+            : [];
+    }
+    return [];
   },
 
   async createNotice(data: { title: string; body: string; hostel_id?: string | null }): Promise<{ ok: boolean; error?: string }> {
@@ -264,13 +278,31 @@ export const api = {
     const q = new URLSearchParams();
     if (params.role) q.set('role', params.role);
     if (params.search) q.set('search', params.search);
-    const res = await apiFetch<{ users: User[] }>(`/api/users?${q.toString()}`);
-    return res.ok && res.data?.users ? res.data.users : [];
+    const res = await apiFetch<any>(`/api/users?${q.toString()}`);
+    if (res.ok && res.data) {
+      return Array.isArray(res.data.data)
+        ? res.data.data
+        : Array.isArray(res.data.users)
+          ? res.data.users
+          : Array.isArray(res.data)
+            ? res.data
+            : [];
+    }
+    return [];
   },
 
   async getWardens(): Promise<User[]> {
-    const res = await apiFetch<{ wardens: User[] }>('/api/users/wardens');
-    return res.ok && res.data?.wardens ? res.data.wardens : [];
+    const res = await apiFetch<any>('/api/users/wardens');
+    if (res.ok && res.data) {
+      return Array.isArray(res.data.data)
+        ? res.data.data
+        : Array.isArray(res.data.wardens)
+          ? res.data.wardens
+          : Array.isArray(res.data)
+            ? res.data
+            : [];
+    }
+    return [];
   },
 
   async createUser(data: Partial<User> & { password: string }): Promise<{ ok: boolean; error?: string }> {
@@ -290,8 +322,17 @@ export const api = {
 
   // Hostels
   async getHostels(): Promise<Hostel[]> {
-    const res = await apiFetch<{ hostels: Hostel[] }>('/api/hostels');
-    return res.ok && res.data?.hostels ? res.data.hostels : [];
+    const res = await apiFetch<any>('/api/hostels');
+    if (res.ok && res.data) {
+      return Array.isArray(res.data.data)
+        ? res.data.data
+        : Array.isArray(res.data.hostels)
+          ? res.data.hostels
+          : Array.isArray(res.data)
+            ? res.data
+            : [];
+    }
+    return [];
   },
 
   async createHostel(name: string): Promise<{ ok: boolean; error?: string }> {
@@ -327,7 +368,10 @@ export const api = {
   },
 
   async getAuditStats(): Promise<AuditLogStats | null> {
-    const res = await apiFetch<{ stats: AuditLogStats }>('/api/audit-logs/stats');
-    return res.ok && res.data?.stats ? res.data.stats : null;
+    const res = await apiFetch<any>('/api/audit-logs/stats');
+    if (res.ok && res.data) {
+      return res.data.data || res.data.stats || null;
+    }
+    return null;
   }
 };

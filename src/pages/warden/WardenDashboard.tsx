@@ -4,7 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import { api } from '../../services/apiClient';
 import type { Grievance, GrievanceStatus } from '../../types';
 import { GRIEVANCE_CATEGORIES } from '../../types';
-import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
+import { StatusBadge, PriorityBadge, SlaBadge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { EmptyState } from '../../components/common/EmptyState';
 import { CardSkeleton } from '../../components/common/Skeleton';
@@ -269,6 +269,7 @@ export function WardenDashboard({ onNavigate }: WardenDashboardProps) {
                   <th className="py-3.5 px-4">Category</th>
                   <th className="py-3.5 px-4">Status</th>
                   <th className="py-3.5 px-4">Priority</th>
+                  <th className="py-3.5 px-4">SLA Window</th>
                   <th className="py-3.5 px-4">Filed Date</th>
                   <th className="py-3.5 px-4 text-right">Action</th>
                 </tr>
@@ -290,6 +291,9 @@ export function WardenDashboard({ onNavigate }: WardenDashboardProps) {
                     </td>
                     <td className="py-3.5 px-4">
                       <PriorityBadge priority={item.priority} size="sm" />
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <SlaBadge priority={item.priority} createdAt={item.createdAt} status={item.status} size="sm" />
                     </td>
                     <td className="py-3.5 px-4 text-slate-400">
                       {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

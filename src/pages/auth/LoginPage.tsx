@@ -256,6 +256,51 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
+                {/* 1-Click Quick Demo Switcher */}
+                <div className="pt-3 border-t border-white/10 space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center">
+                    Instant Demo Accounts (1-Click Fill)
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('student@example.test');
+                        setPassword('student123');
+                        setFormError(null);
+                      }}
+                      className="p-2 rounded-xl bg-indigo-600/15 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold flex flex-col items-center gap-1 transition-colors"
+                    >
+                      <GraduationCap className="w-4 h-4 text-indigo-400" />
+                      <span>Student</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('warden@example.test');
+                        setPassword('warden123');
+                        setFormError(null);
+                      }}
+                      className="p-2 rounded-xl bg-cyan-600/15 hover:bg-cyan-600/30 border border-cyan-500/30 text-cyan-300 text-xs font-semibold flex flex-col items-center gap-1 transition-colors"
+                    >
+                      <Shield className="w-4 h-4 text-cyan-400" />
+                      <span>Warden</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('admin@example.test');
+                        setPassword('admin123');
+                        setFormError(null);
+                      }}
+                      className="p-2 rounded-xl bg-purple-600/15 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 text-xs font-semibold flex flex-col items-center gap-1 transition-colors"
+                    >
+                      <Zap className="w-4 h-4 text-purple-400" />
+                      <span>Admin</span>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="pt-2 text-center">
                   <p className="text-xs text-slate-400">
                     Don't have an account yet?{' '}

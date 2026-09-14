@@ -21,7 +21,8 @@ import {
   ShieldCheck,
   User,
   Calendar,
-  Layers
+  Layers,
+  ExternalLink
 } from 'lucide-react';
 
 interface GrievanceDetailPageProps {
@@ -95,12 +96,16 @@ export function GrievanceDetailPage({ id, onBack }: GrievanceDetailPageProps) {
       toastError('Feedback required', 'Please share brief feedback on the resolution');
       return;
     }
+    if (!reviewFile) {
+      toastError('Proof picture required', 'Please upload a photo showing the resolved work.');
+      return;
+    }
 
     setSubmittingReview(true);
     const res = await api.submitReview(id, {
       rating,
       feedback,
-      file: reviewFile || undefined
+      file: reviewFile
     });
     setSubmittingReview(false);
 
@@ -308,14 +313,25 @@ export function GrievanceDetailPage({ id, onBack }: GrievanceDetailPageProps) {
                       <div className="text-[10px] text-slate-400">{(att.sizeBytes / 1024).toFixed(1)} KB</div>
                     </div>
                   </div>
-                  <a
-                    href={`/api/attachments/${att.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                  </a>
+                  <div className="flex items-center gap-1">
+                    <a
+                      href={`/api/attachments/${att.id}?inline=true`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Preview in browser"
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                    <a
+                      href={`/api/attachments/${att.id}`}
+                      download
+                      title="Download attachment"
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  </div>
                 </div>
               ))}
             </div>
@@ -324,7 +340,7 @@ export function GrievanceDetailPage({ id, onBack }: GrievanceDetailPageProps) {
 
         {/* Resolution Review Card (if already reviewed) */}
         {grievance.review && (
-          <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/30 space-y-2">
+          <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/30 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -344,6 +360,21 @@ export function GrievanceDetailPage({ id, onBack }: GrievanceDetailPageProps) {
               </div>
             </div>
             <p className="text-xs text-slate-300 italic">"{grievance.review.feedback}"</p>
+            {grievance.review.attachmentId && (
+              <div className="pt-2 border-t border-emerald-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Solution Proof Photo Attached
+                </span>
+                <a
+                  href={`/api/attachments/${grievance.review.attachmentId}?inline=true`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Inspect Solution Proof
+                </a>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -475,14 +506,16 @@ export function GrievanceDetailPage({ id, onBack }: GrievanceDetailPageProps) {
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Proof Photo of Fixed Work (Optional)
+              Proof Photo of Fixed Work <span className="text-rose-400">*</span>
             </label>
             <input
               type="file"
+              required
               accept="image/*"
               onChange={e => setReviewFile(e.target.files?.[0] || null)}
               className="text-xs text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500"
             />
+            <span className="text-[10px] text-slate-400 block mt-1">Photo showing completed repair is required to verify resolution</span>
           </div>
 
           <div className="flex justify-end gap-2 pt-3">

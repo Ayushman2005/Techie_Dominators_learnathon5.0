@@ -23,10 +23,13 @@ export function StudentProfilePage() {
 
   useEffect(() => {
     async function loadProfileMetadata() {
+      if (user?.warden) {
+        setWarden(user.warden);
+      }
       try {
         const [hostels, wardens] = await Promise.all([
-          api.getHostels(),
-          api.getWardens()
+          api.getHostels().catch(() => []),
+          api.getWardens().catch(() => [])
         ]);
 
         if (user?.hostelId) {
@@ -36,11 +39,13 @@ export function StudentProfilePage() {
           setHostel(hostels[0]);
         }
 
-        if (user?.wardenId) {
-          const matchedWarden = wardens.find(w => w.id === user.wardenId);
-          if (matchedWarden) setWarden(matchedWarden);
-        } else if (wardens.length > 0) {
-          setWarden(wardens[0]);
+        if (!user?.warden) {
+          if (user?.wardenId) {
+            const matchedWarden = wardens.find(w => w.id === user.wardenId);
+            if (matchedWarden) setWarden(matchedWarden);
+          } else if (wardens.length > 0) {
+            setWarden(wardens[0]);
+          }
         }
       } catch (err) {
         console.error('Failed to load profile metadata:', err);

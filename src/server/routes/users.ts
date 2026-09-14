@@ -129,10 +129,7 @@ userRoutes.get('/stats', (c) => {
 
 userRoutes.get('/wardens', (c) => {
 	const db = c.get('db');
-	const user = requireUser(c, db);
-	if (user.role === 'student') {
-		throw new HttpError(403, 'unauthorized', 'Students cannot access this resource.');
-	}
+	requireUser(c, db);
 	const wardens = listWardens(db);
 	return c.json({ data: wardens.map((w) => assembleUser(db, w)) });
 });
